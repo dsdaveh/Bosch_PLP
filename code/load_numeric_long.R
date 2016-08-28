@@ -34,3 +34,29 @@ saveRDS(train_long, file = "../data/train_numeric_long.rds")
 
 cat('total elapsed', (t1-t0)[3], '\n' )
 
+#probably should have broken it up during initial read and assembled chunks, but its done now
+nchunk <- 10
+chunk_prefix <- "../data/train_numeric_long_chunk_"
+ids <- sort(unique(train_long$Id))
+chunk_size <- ceiling( length(ids) / 10)
+setkey(train_long, Id)
+
+for( i in 2:nchunk) {
+    id_last <- ids[chunk_size]
+    ids <- ids[-(1:chunk_size)]
+    chunk <- train_long[ Id <= id_last ]
+    chunk_name <- paste0(chunk_prefix, i-1, ".rds")
+    saveRDS(chunk, file = chunk_name)
+    rm(chunk)
+    gc(verbose = FALSE)
+    train_long <- train_long[ Id > id_last ]
+    gc()
+    t2 <- proc.time()
+    cat('...elapsed',chunk_name, (t2-t1)[3], '\n' )
+    t1 <- t2
+}
+chunk_name <- paste0(chunk_prefix, i, ".rds")
+saveRDS(train_long, file = paste0(chunk_prefix, i, ".rds"))
+t2 <- proc.time()
+cat('...elapsed',chunk_name, (t2-t1)[3], '\n' )
+rm( chunk_name, train_long, ids)
