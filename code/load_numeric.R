@@ -1,7 +1,7 @@
 library(data.table)
 library(recommenderlab)
 
-for (i in 1:5) {
+for (i in 1:97) {
     
     cat("Loading ", i, "th part.\n", sep = "")
     train_data_temp <- fread(input = "../input/train_numeric.csv",
@@ -45,4 +45,5 @@ for (i in 1:5) {
 }
 
 gc()
-saveRDS(train_numeric, file = "train_numeric.rds")
+saveRDS(train_numeric, file = "../data/train_numeric.rds")
+# train_numeric <- readRDS(file = "../data/train_numeric.rds")

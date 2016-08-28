@@ -1,0 +1,68 @@
+---
+title: "eda_numeric with data.table"
+author: "Dave Hurst"
+date: "August 27, 2016"
+output: html_document
+---
+
+```{r}
+
+if (! grepl('\\/code$', getwd())) setwd('code')
+stopifnot (grepl('\\/code$', getwd()))
+
+library(data.table)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(formattable)
+
+source('bosch_plp_util.R')
+tcheck(0)
+
+train_long <- readRDS(file = "../data/train_numeric_long.rds"); tcheck(desc='read_rds')
+#metric_cnt <- train_long %>% count(metric); tcheck(desc='count_metrics')
+metric_cnt <- train_long[, .(count=.N), by=metric]; tcheck(desc='count_metrics')
+fnames <- metric_cnt$metric[1:(nrow(metric_cnt)-1)]  #drop the Response column
+
+#how many lines, stations, features
+coverage <- str_split(fnames, "_") %>% as.data.table() %>% t() %>% as.data.table()
+names(coverage) <- c("Line", "Station", "Feature")
+line_info <- coverage[ , .(nStations = length(unique(Station)), nFeatures = .N), by=Line]
+line_info %>% formattable( list( nStations = color_bar("orange"),
+                                 nFeatures = color_bar("skyblue")),  align = 'l')
+tcheck(desc='line_counts')
+
+#how many times does an Id occur (is it constant)?
+#id_cnt <- train_long %>% group_by(Id) %>% summarize( count = n()); tcheck(desc='Id counts')
+setkey(train_long, Id)
+id_cnt <- train_long[, .(count=.N), by=Id] ; tcheck(desc='Id counts')
+summary(id_cnt$count)    # range 1-328 
+
+#could Id metric count be a feature? (number of metrics for an Id)
+setkey(id_cnt, Id)
+id_cnt <- id_cnt[train_long[metric == 'Response']][, .(Id, count, Response=as.factor(value))]  ; tcheck(desc='join Response')
+summary(id_cnt$Response)  #tiny failure rate ... 0.58 %
+nFails <- sum( id_cnt$Response == 1)
+
+id_cnt %>% 
+    ggplot( aes( Response, count)) + geom_boxplot()  + ylab("non-NA feature count per part")
+# doesn't look like that will be helpful
+
+set.seed(400)
+id_cnt$hist <- id_cnt$Response
+id_cnt[sample( which(id_cnt$Response == '0'), nFails), hist := '2']
+id_cnt[sample( which(id_cnt$Response == '0'), nFails), hist := '3']
+# id_cnt[sample( which(id_cnt$Response == '0'), nFails), hist := '4']
+levels(id_cnt$hist) <- c("Pass", "Fail", "Random1 Pass", "Random2 Pass") #, "Random3 Pass")
+id_cnt %>% ggplot( aes(count, fill=hist)) + 
+    geom_histogram( binwidth = 25, col="black") + expand_limits(x=400) +
+    facet_wrap( ~hist, scales="free_y" )
+
+id_cnt[, hist:=NULL]
+tcheck(desc='id metric count plots')
+gc()
+elapsed <- get_tcheck()
+print(elapsed)
+sum(elapsed$delta)
+```
+
