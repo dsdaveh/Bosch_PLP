@@ -51,6 +51,7 @@ input/*
 data/*
 submissions/*
 
+*.Rhistory
 *.Rproj
 *.RData
 *.html
