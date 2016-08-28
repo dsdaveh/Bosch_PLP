@@ -2,24 +2,39 @@ library(data.table)
 library(tidyr)
 
 train_long <- data.table()
+nrows <- n_remaining <- 1183748 - 1
+nchunk <- 10
+chunk_prefix <- "../data/train_date_long_chunk_"
+chunk_size <- ceiling( nrows / 10)
 
-nbatch <- 50
-nsize <- round(970/(nbatch))
-col_first <- seq(2, 970, by=nsize )
-col_last <- col_first + nsize - 1
 t0 <- t1 <- proc.time()
-for(i in seq_along(col_first)) {
-    
+
+header <- fread(input = "../input/train_date.csv", nrows=1, header=TRUE)
+
+skip_rows <- 1
+for(i in 1:nchunk) {
     cat("Loading ", i, "th part.\n", sep = "")
-    train_data_temp <- fread(input = "../input/train_numeric.csv",
-                             select = c(1, col_first[i]:col_last[i]),
-                             header = TRUE,
-                             sep = ",",
-                             stringsAsFactors = FALSE,
-                             colClasses = rep("numeric", 970),
-                             data.table = TRUE) %>% 
-        gather(metric, value, -Id) %>% data.table()
+    chunk <- fread(input = "../input/train_date.csv", skip=skip_rows, header=FALSE,
+                             nrows = chunk_size )
+    read_rows <- nrow(chunk)
+    names(chunk) <- names(header)
+    chunk <- chunk %>% gather(metric, value, -Id) %>% data.table()
+    chunk <- chunk[ ! is.na(value)]
+    
+    chunk_name <- paste0(chunk_prefix, i, ".rds")
+    saveRDS(chunk, file = chunk_name)
+    rm(chunk)
     gc(verbose = FALSE)
+    
+    t2 <- proc.time()
+    cat('...elapsed', (t2-t1)[3], read_rows,'rows\n' )
+    t1 <- t2
+    
+    
+    skip_rows <- skip_rows + chunk_size 
+}
+                             
+
     train_long <- rbind(train_long, train_data_temp[! is.na(value)] )
     if (i %% 10 == 0) { saveRDS(train_long, file = "../data/train_numeric_long.rds"); cat('...saving...\n') }
     t2 <- proc.time()
