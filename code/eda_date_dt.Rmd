@@ -1,0 +1,90 @@
+---
+title: "eda_date with data.table"
+author: "Dave Hurst"
+date: "August 27, 2016"
+output: html_document
+---
+
+```{r}
+
+if (! grepl('\\/code$', getwd())) setwd('code')
+stopifnot (grepl('\\/code$', getwd()))
+
+library(data.table)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(formattable)
+
+source('bosch_plp_util.R')
+tcheck(0)
+
+train_long <- readRDS(file = "../data/train_date_long.rds"); tcheck(desc='read_rds')
+#train_long <- readRDS(file = "../data/train_date_long_chunk_1.rds") #dev
+metric_cnt <- train_long[, .(count=.N), by=metric]; tcheck(desc='count_metrics')
+fnames <- metric_cnt$metric
+
+#how many lines, stations, features
+coverage <- str_split(fnames, "_") %>% as.data.table() %>% t() %>% as.data.table()
+names(coverage) <- c("Line", "Station", "Feature")
+line_info <- coverage[ , .(nStations = length(unique(Station)), nFeatures = .N), by=Line]
+line_info %>% formattable( list( nStations = color_bar("orange"),
+                                 nFeatures = color_bar("skyblue")),  align = 'l')
+tcheck(desc='line_counts')
+
+# Aggregate by station
+setkey(train_long, Id)
+id_cnt <- train_long[
+    , station := str_extract(metric, "S\\d+")][               #extract station ID
+        , .(station_metric_count=.N,
+            time_in = min(value), time_out = max(value)), by=c("Id", "station")][     #rollup by station
+                , .(station_count = .N, metric_count = sum(station_metric_count),
+                    min_time = min(time_in), max_time = max(time_out)), by=Id ][  #rollup by Id
+                        , proc_time := max_time - min_time]
+        
+train_long[, station := NULL] #cleanup
+
+#how many times does an Id occur (how many metrics does each Id have? is it constant?)
+summary(id_cnt$metric_count)    # range 1-328 
+
+#same question for stations
+summary(id_cnt$station_count)   
+
+summary(id_cnt$proc_time)
+
+
+#
+#could Id metric count be a feature? (number of metrics for an Id)
+setkey(id_cnt, Id)
+id_cnt <- id_cnt[truth]; tcheck(desc='join Response')
+summary(id_cnt$Response)  #tiny failure rate ... 0.58 %
+nFails <- sum( id_cnt$Response == 1)
+
+id_cnt %>% ggplot( aes(station_count, proc_time, col=Response)) + geom_jitter(aes(size=Response), alpha=0.6)
+
+id_cnt %>% 
+    ggplot( aes( Response, metric_count)) + geom_boxplot()  + ylab("non-NA feature count per part")
+# doesn't look like that will be helpful
+
+set.seed(400)
+id_cnt$hist <- id_cnt$Response
+id_cnt[sample( which(id_cnt$Response == '0'), nFails), hist := '2']
+id_cnt[sample( which(id_cnt$Response == '0'), nFails), hist := '3']
+# id_cnt[sample( which(id_cnt$Response == '0'), nFails), hist := '4']
+levels(id_cnt$hist) <- c("Pass", "Fail", "Random1 Pass", "Random2 Pass") #, "Random3 Pass")
+id_cnt %>% ggplot( aes(metric_count, fill=hist)) + 
+    geom_histogram( binwidth = 25, col="black") + expand_limits(x=400) +
+    facet_wrap( ~hist, scales="free_y" )
+
+id_cnt %>% ggplot( aes(station_count, fill=hist)) + 
+    geom_histogram( binwidth = 2, col="black") + expand_limits(x=25) +
+    facet_wrap( ~hist, scales="free_y" )
+
+id_cnt[, hist:=NULL]
+tcheck(desc='id metric count plots')
+gc()
+elapsed <- get_tcheck()
+print(elapsed)
+sum(elapsed$delta)
+```
+
