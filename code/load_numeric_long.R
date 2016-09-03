@@ -1,6 +1,12 @@
 library(data.table)
 library(tidyr)
 
+#save the response into a separate file for easy lookup
+truth <- fread(input = "../input/train_numeric.csv", 
+               select = c(1, 970), colClasses = c("integer", rep("numeric", 968), "factor"))
+saveRDS(truth, file="../data/train_response.rds")
+rm(truth)
+
 train_long <- data.table()
 
 nbatch <- 50
@@ -33,6 +39,7 @@ saveRDS(train_long, file = "../data/train_numeric_long.rds")
 # train_long <- readRDS(file = "../data/train_numeric_long.rds")
 
 cat('total elapsed', (t1-t0)[3], '\n' )
+
 
 #probably should have broken it up during initial read and assembled chunks, but its done now
 nchunk <- 10
