@@ -41,3 +41,19 @@ tcheck <- function(t=1, desc = tcheck.default_string() ) {
     }
 }
 get_tcheck <- function() tcheck.df %>% mutate( delta=c( 0, diff(elapsed)) ) %>% select( desc, delta)
+
+# read a chunk from the original input files
+read_raw_chunk <- function( i, nchunk = 10, input = '../input/train_numeric.csv' ) {
+    
+    ncols <- ifelse( grepl("train_numeric", input), 970, 969)
+    nrows <- 1183747
+    chunk_size <- ceiling( nrows / 10)
+    
+    header <- fread(input = input, nrows=1, header=TRUE)
+    
+    skip_rows <- (i - 1) * chunk_size + 1
+    chunk <- fread(input = "../input/train_numeric.csv", skip=skip_rows, header=FALSE,
+                   nrows = chunk_size )
+    names(chunk) <- names(header)
+    return(chunk)
+}

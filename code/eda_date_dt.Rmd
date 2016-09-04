@@ -14,6 +14,7 @@ library(data.table)
 library(dplyr)
 library(stringr)
 library(ggplot2)
+library(ggvis)
 library(formattable)
 
 source('bosch_plp_util.R')
@@ -23,6 +24,13 @@ train_long <- readRDS(file = "../data/train_date_long.rds"); tcheck(desc='read_r
 #train_long <- readRDS(file = "../data/train_date_long_chunk_1.rds") #dev
 metric_cnt <- train_long[, .(count=.N), by=metric]; tcheck(desc='count_metrics')
 fnames <- metric_cnt$metric
+
+# #did this elsewhere, but this is reminder that some date info is missing
+# ids_num <- sort(unique(train_num$Id))
+# ids_date <- sort(unique(train_date$Id))
+# no_dates <- setdiff(ids_num,ids_date)
+# no_dates_response <- truth[ Id %in% no_dates]$value
+# summary(no_dates_response)  # all 0's
 
 #how many lines, stations, features
 coverage <- str_split(fnames, "_") %>% as.data.table() %>% t() %>% as.data.table()
@@ -52,7 +60,8 @@ summary(id_cnt$station_count)
 
 summary(id_cnt$proc_time)
 
-
+#looks like there are possible  multiple modes here (part clusters?)
+id_cnt %>% ggvis( ~min_time ) %>% layer_histograms()
 #
 #could Id metric count be a feature? (number of metrics for an Id)
 setkey(id_cnt, Id)
