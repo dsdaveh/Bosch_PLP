@@ -1,11 +1,17 @@
+# _run_thin runs  _study multiple times over different chunks
+
 library(tidyr)
 
 tcheck.print = TRUE
 tcheck(0)
 
+
+
+# This step creates the models for each chunk and runs a test on the same chunk (results)
+##########################
 ## parameters
 # ichunk contolled in for loops
-pass_fail_ratio <- 200
+# pass_fail_ratio <- 5  ## TODO - this is hard coded in min_obs_wide_study.R 
 ##
 results <- list()
 for (ichunk in 1:10) {
@@ -33,11 +39,19 @@ fea_top30 %>% ggplot( aes(reorder(Feature,Gain.sum), Gain.sum)) +
 fea_top30 %>% select( -Feature, -Gain.sum) %>% gather(model, Gain) %>%
     ggplot( aes(model, Gain, group=model)) + geom_bar(stat="sum")
 
+# This step runs the models for each chunk (xresults_all)
+##########################
+## parameters
+# ichunk contolled in for loops
+pass_fail_ratio <- 200  
+##
 
 xresults_all <- data.frame()
+ratios <- numeric()  # keep track of the pass/fail ratio used (if param setting exceeds data)
 for (ichunk in 1:10) {
     source('min_obs_wide_study_xrun.R')
     xresults_all <-rbind(xresults_all, xresults)
+    ratios <- c( ratios, floor(length(ix_pass) / nFails) )
 }
 save(xresults_all, file='../data/min_obs_thin_xrun.RData')
 

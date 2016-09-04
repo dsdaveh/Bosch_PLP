@@ -51,7 +51,15 @@ ix_hold_fail <- sample( ix_fail, floor( nFails * .20 ))  # 20% holdout for testi
 ### ix_trn_fail <- setdiff( ix_fail, ix_hold_fail)
 
 #shrink the number of passes to choose from
-ix_pass <- sample( which(trnw_num$Response == '0'), nFails * pass_fail_ratio )
+n_pass_size <- nFails * pass_fail_ratio
+ix_pass <- which(trnw_num$Response == '0')
+if (n_pass_size > length(ix_pass)) {
+    warning( sprintf(
+        "Request pass/fail ratio (%d) exeeds the data (%d) using full set\n",
+        floor(pass_fail_ratio), floor(length(ix_pass) / nFails) ))
+} else {
+    ix_pass <- sample( ix_pass, n_pass_size )
+}
 ix_hold_pass <- sample( ix_pass, floor(length(ix_pass) * .20 ))  # 20% holdout for testing
 ### ix_trn_pass <- setdiff( ix_pass, ix_hold_pass)
 
@@ -59,7 +67,7 @@ ix_hold_pass <- sample( ix_pass, floor(length(ix_pass) * .20 ))  # 20% holdout f
 trn_hold <- trnw_num[ c(ix_hold_fail, ix_hold_pass) ] %>% sample_frac()
 ### trnw_num <- trnw_num[ c(ix_trn_fail, ix_trn_pass) ] %>% sample_frac()
 
- trn_cols <- setdiff( names(trnw_num), c("Id", "Response"))
+trn_cols <- setdiff( names(trnw_num), c("Id", "Response"))
 # 
 # xgb_params <- list( 
 #     eta = 0.3,      #
@@ -85,6 +93,7 @@ trn_hold <- trnw_num[ c(ix_hold_fail, ix_hold_pass) ] %>% sample_frac()
 xresults <- data.frame()
 for (imodel in 1:10) {
     
+    par.orig <- par(mfrow=c(1,2))
     model <- results[[imodel * 6]]
     probs <- predict( model, dropNA(as.matrix(trn_hold)[, trn_cols]) )
     preds <- prediction( probs, trn_hold$Response )
@@ -97,11 +106,13 @@ for (imodel in 1:10) {
     cutoff <- mcc_cuts[ which.max(mcc_vals)]
     plot(mcc_cuts, mcc_vals, type='l')
     abline(v=cutoff)
+    par(par.orig)
     mcc_best <- max(mcc_vals, na.rm=TRUE )
     cat( sprintf( "max MCC @ %4.2f = %f\n", cutoff, mcc_best ))
     
     xresults <- rbind(
         xresults, data.frame( imodel=imodel, ichunk=ichunk, MCC=mcc_best, cutoff=cutoff))
+    title(sprintf("ROC & MCC for model %d using chunk %d", imodel, ichunk))
 }
 # xgb_imp <- xgb.importance( trn_cols, model=model )
 # xgb_plot <- xgb_imp %>% arrange(desc(Gain)) %>% dplyr::slice(1:30) %>% ggplot( aes(reorder(Feature,Gain), Gain)) + geom_bar(stat="identity", position='identity') + coord_flip()
