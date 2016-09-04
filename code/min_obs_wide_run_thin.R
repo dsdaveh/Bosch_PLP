@@ -3,12 +3,16 @@ library(tidyr)
 tcheck.print = TRUE
 tcheck(0)
 
+## parameters
+# ichunk contolled in for loops
+pass_fail_ratio <- 200
+##
 results <- list()
 for (ichunk in 1:10) {
     source('min_obs_wide_study.R')
     results <- c(results, chunk_results)
 }
-#save(results, file='../data/min_obs_sep3_thin.RData')
+save(results, file='../data/min_obs_thin.RData')
 tcheck.print = FALSE
 
 fea_diffs <- list()
@@ -35,7 +39,7 @@ for (ichunk in 1:10) {
     source('min_obs_wide_study_xrun.R')
     xresults_all <-rbind(xresults_all, xresults)
 }
-#save(xresults_all, file='../data/min_obs_sep3_thin_xrun.RData')
+save(xresults_all, file='../data/min_obs_thin_xrun.RData')
 
 summary(xresults_all$MCC)
 summary(xresults_all$cutoff)

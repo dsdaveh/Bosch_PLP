@@ -1,7 +1,9 @@
 # minimal observation with wide dataset
 # Try a wide dataset with all the failure observations and 5:1 random pass:fail observations
 #
-# xrun variation uses models from a previous run.  All 10 models are run again the holdout for each chunk
+# 
+# _study builds the models
+# _study_xrun variation uses models from a previous run.  All 10 models are run again the holdout for each chunk
 if (! grepl('\\/code$', getwd())) setwd('code')
 stopifnot (grepl('\\/code$', getwd()))
 
@@ -14,9 +16,10 @@ library(ROCR)
 
 source('bosch_plp_util.R')
 
-pass_fail_ratio <- 5
+## parameters
+if(! exists("pass_fail_ratio")) pass_fail_ratio <- 5
 if(! exists("ichunk")) ichunk <- 1
-
+## 
 trnw_num <- read_raw_chunk(ichunk, input='../input/train_numeric.csv')
 trnl_date <- readRDS(file = sprintf("../data/train_date_long_chunk_%d.rds", ichunk)) # see 'load_date_long.R'
 tcheck( desc = 'initial data load')
