@@ -24,6 +24,7 @@ for(i in 1:nchunk) {
     cat("Loading ", i, "th part.\n", sep = "")
     chunk <- fread(input = "../input/train_numeric.csv", skip=skip_rows, header=FALSE,
                              nrows = chunk_size )
+    saveRDS(chunk, file=sprintf('../data/train_numeric_raw_chunk%d.rds', i))
     read_rows <- nrow(chunk)
     names(chunk) <- names(header)
     
