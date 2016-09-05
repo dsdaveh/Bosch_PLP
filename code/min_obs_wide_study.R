@@ -10,10 +10,11 @@ library(stringr)
 library(ggplot2)
 library(xgboost)
 library(ROCR)
+library(recommenderlab)
 
 source('bosch_plp_util.R')
 
-pass_fail_ratio <- 5
+if(! exists("pass_fail_ratio")) pass_fail_ratio <- 5
 if(! exists("ichunk")) ichunk <- 1
 
 trnw_num <- read_raw_chunk(ichunk, input='../input/train_numeric.csv')

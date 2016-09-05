@@ -67,3 +67,18 @@ xresults_all %>% mutate(ichunk=as.factor(ichunk)) %>%
     geom_smooth(method="lm") +
     facet_wrap( ~mregion) + ggtitle("MCC for all models by chunk (region) model was trained on")
 
+# This step runs the models for each test chunk
+##########################
+## parameters
+# ichunk contolled in for loops
+##
+
+ens_results_all <- data.table()
+for (ichunk in 1:10) {
+    source('min_obs_wide_study_submit.R')
+    ens_results_all <- rbind(ens_results_all, ens_results[, chunk := ichunk])
+}
+saveRDS(ens_results_all, file='../data/min_obs_thin_submit.rds')
+sfile <- sprintf("../submissions/min_obs_thin_%s.csv", format(Sys.time(), "%Y_%m_%d_%H%M%S"))
+write.csv( ens_results %>% select(Id, prob_pred), file=sfile, row.names = FALSE)
+
