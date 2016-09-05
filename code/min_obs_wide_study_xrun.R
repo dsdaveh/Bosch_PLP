@@ -93,6 +93,7 @@ trn_cols <- setdiff( names(trnw_num), c("Id", "Response"))
 
 xresults <- data.frame()  # summarized results
 obs_results <- data.table()
+obs_stack <- trn_hold[, .(Id, Response)]
 for (imodel in 1:10) {
     
     par.orig <- par(mfrow=c(1,2))
@@ -105,6 +106,14 @@ for (imodel in 1:10) {
     mcc_vals <- unlist( attr(mcc, "y.values"))
     mcc_cuts <- unlist( attr(mcc, "x.values"))
     cutoff <- mcc_cuts[ which.max(mcc_vals)]
+    yhat <- as.integer( probs >= cutoff)
+    
+    # add results as columns
+    answers <- data.frame( probs, yhat)
+    names(answers) <- c( paste0('p',imodel), paste0('yhat',imodel))
+    obs_stack <- cbind( obs_stack, answers)
+    rm(answers)
+    
     plot(mcc_cuts, mcc_vals, type='l')
     abline(v=cutoff)
     par(par.orig)
@@ -117,8 +126,7 @@ for (imodel in 1:10) {
     
     obs_results <- rbind( 
         obs_results, trn_hold[, .(
-            imodel, Id, probs, Response,
-            predictions = as.integer( probs >= mcc_best )
+            imodel, Id, probs, Response
         )])
     
     xresults <- rbind(
@@ -129,19 +137,14 @@ for (imodel in 1:10) {
 
 #ensemble results
 #################
-# method 1 - mean predictions
-# method 2 - mean probabilities
+# method 1 - mean probabilities
+# method 2 - stacking (happens one level up)
 
 ens_results <- obs_results[, .(Response = min(Response),
-                               mean_prob = mean(probs),
-                               mean_pred = mean(predictions)), by=Id]
+                               mean_prob = mean(probs)), by=Id]
 
 #method1 cutoff finding ratio
 cutoff_m1 <- find_cutoff_by_ratio( ens_results$mean_prob, 1/171)
-ens_results$prob_pred <- as.integer( ens_results$mean_prob >= cutoff_m1 )
-
-#method2 cutoff finding ratio
-cutoff_m2 <- find_cutoff_by_ratio( ens_results$mean_pred, 1/171)
-ens_results$pred_pred <- as.integer( ens_results$mean_prob >= cutoff_m2 )
+ens_results$y_m1 <- as.integer( ens_results$mean_prob >= cutoff_m1 )
 
 tcheck(desc= sprintf('completed chunk %d', ichunk))

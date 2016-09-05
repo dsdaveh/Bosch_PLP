@@ -21,25 +21,28 @@ source('bosch_plp_util.R')
 ## parameters
 if(! exists("ichunk")) ichunk <- 1
 ## 
-trnw_num <- read_raw_chunk(ichunk, input='../input/test_numeric.csv')
-trnl_date <- readRDS(file = sprintf("../data/test_date_long_chunk_%d.rds", ichunk)) # see 'load_date_long.R'
+tstw_num <- read_raw_chunk(ichunk, input='../input/test_numeric.csv')
+tstl_date <- readRDS(file = sprintf("../data/test_date_long_chunk_%d.rds", ichunk)) # see 'load_date_long.R'
 tcheck( desc = 'initial data load')
 
 ## stolen from date eda
-id_cnt <- trnl_date[
+id_cnt <- tstl_date[
     , station := str_extract(metric, "S\\d+")][               #extract station ID
         , .(station_metric_count=.N,
             time_in = min(value), time_out = max(value)), by=c("Id", "station")][     #rollup by station
                 , .(station_count = .N, metric_count = sum(station_metric_count),
                     min_time = min(time_in), max_time = max(time_out)), by=Id ][  #rollup by Id
                         , proc_time := max_time - min_time]
-rm(trnl_date); gc(); tcheck(desc='extract data features')
+rm(tstl_date); gc(); tcheck(desc='extract data features')
 
-setkey(trnw_num, Id)
+setkey(tstw_num, Id)
 setkey(id_cnt, Id)
 
-trnw_num <- trnw_num[ id_cnt, nomatch=FALSE]
+all_ids <- tstw_num$Id
+tstw_num <- tstw_num[ id_cnt, nomatch=FALSE]
 rm(id_cnt)
+
+missing_date_ids <- setdiff(all_ids, tstw_num$Id) 
 
 ## move this to eda
 # trnw_num %>% ggplot( aes(min_time, fill=as.factor(Response) ))+ geom_density( alpha=.5)
@@ -93,11 +96,12 @@ trn_cols <- setdiff( names(trnw_num), c("Id", "Response"))
 
 xresults <- data.frame()  # summarized results
 obs_results <- data.table()
+obs_stack <- tstw_num[, .(Id)]
 for (imodel in 1:10) {
     
 #     par.orig <- par(mfrow=c(1,2))
     model <- results[[imodel * 6]]
-    probs <- predict( model, dropNA(as.matrix(trn_hold)[, trn_cols]) )
+    probs <- predict( model, dropNA(as.matrix(tstw_num)[, trn_cols]) ); tcheck(desc=sprintf("run model%d", imodel))
 #     preds <- prediction( probs, trn_hold$Response ) #ROCR
 #     perf <- performance(preds, "tpr", "fpr")
 #     plot(perf)
@@ -114,9 +118,17 @@ for (imodel in 1:10) {
 #     
 #     #print( table( trn_hold$Response, ifelse(probs > cutoff, 1, 0) ))
 #     cat( sprintf( "max MCC @ %4.2f = %f\n", cutoff, mcc_best ))
+    cutoff <- find_cutoff_by_ratio( probs, 1/171)  
+    yhat <- as.integer( probs >= cutoff)
+    
+    # add results as columns
+    answers <- data.frame( probs, yhat)
+    names(answers) <- c( paste0('p',imodel), paste0('yhat',imodel))
+    obs_stack <- cbind( obs_stack, answers)
+    rm(answers)
     
     obs_results <- rbind( 
-        obs_results, trn_hold[, .(
+        obs_results, tstw_num[, .(
             imodel, Id, probs
         )])
 }
@@ -133,9 +145,5 @@ ens_results <- obs_results[, .(mean_prob = mean(probs)), by=Id]
 #method1 cutoff finding ratio
 cutoff_m1 <- find_cutoff_by_ratio( ens_results$mean_prob, 1/171)
 ens_results$prob_pred <- as.integer( ens_results$mean_prob >= cutoff_m1 )
-
-# #method2 cutoff finding ratio
-# cutoff_m2 <- find_cutoff_by_ratio( ens_results$mean_pred, 1/171)
-# ens_results$pred_pred <- as.integer( ens_results$mean_prob >= cutoff_m2 )
 
 tcheck(desc= sprintf('completed chunk %d', ichunk))

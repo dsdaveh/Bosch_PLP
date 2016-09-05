@@ -48,15 +48,18 @@ pass_fail_ratio <- 200
 
 xresults_all <- data.frame()
 ens_results_all <- data.table()
+obs_stack_all <- data.table()
 ratios <- numeric()  # keep track of the pass/fail ratio used (if param setting exceeds data)
 for (ichunk in 1:10) {
     source('min_obs_wide_study_xrun.R')
     xresults_all <-rbind(xresults_all, xresults)
     ratios <- c( ratios, floor(length(ix_pass) / nFails) )
     ens_results_all <- rbind(ens_results_all, ens_results[, chunk := ichunk])
+    obs_stack_all <- rbind(obs_stack_all, obs_stack)
 }
 saveRDS(xresults_all, file='../data/min_obs_thin_xrun_meta.rds')
-saveRDS(ens_results_all, file='../data/min_obs_thin_xrun_ensemble.rds')
+saveRDS(ens_results_all, file='../data/min_obs_thin_xrun_ensemble_m1.rds')
+saveRDS(obs_stack_all, file='../data/min_obs_thin_xrun_ensemble_stacked.rds')
 
 summary(xresults_all$MCC)
 summary(xresults_all$cutoff)
@@ -74,11 +77,16 @@ xresults_all %>% mutate(ichunk=as.factor(ichunk)) %>%
 ##
 
 ens_results_all <- data.table()
-for (ichunk in 1:10) {
+guess0 <- integer()
+for (ichunk in 1:1) {
     source('min_obs_wide_study_submit.R')
     ens_results_all <- rbind(ens_results_all, ens_results[, chunk := ichunk])
+    guess0 <- c( guess0, missing_date_ids)
 }
-saveRDS(ens_results_all, file='../data/min_obs_thin_submit.rds')
-sfile <- sprintf("../submissions/min_obs_thin_%s.csv", format(Sys.time(), "%Y_%m_%d_%H%M%S"))
-write.csv( ens_results %>% select(Id, prob_pred), file=sfile, row.names = FALSE)
+ens_results_all <- rbind(ens_results_all, data.table( Id=guess0, mean_prob=0, prob_pred=0, chunk=0))
+
+date_stamp <- format(Sys.time(), "%Y_%m_%d_%H%M%S")
+saveRDS(ens_results_all, file= sprintf('../data/min_obs_thin_submit_%s.rds', date_stamp))
+sfile <- sprintf("../submissions/min_obs_thin_%s.csv", date_stamp)
+write.csv( ens_results_all %>% select(Id, Response=prob_pred), file=sfile, row.names = FALSE)
 
