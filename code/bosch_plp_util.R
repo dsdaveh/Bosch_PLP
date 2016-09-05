@@ -74,13 +74,13 @@ read_raw_chunk <- function( i, nchunk = 10, input = '../input/train_numeric.csv'
         return(chunk)
     }
     ncols <- ifelse( grepl("train_numeric", input), 970, 969)
-    nrows <- 1183747
+    nrows <- ifelse( grepl("train_",        input), 1183747, 1183747)
     chunk_size <- ceiling( nrows / 10)
     
     header <- fread(input = input, nrows=1, header=TRUE)
-    
+
     skip_rows <- (i - 1) * chunk_size + 1
-    chunk <- fread(input = "../input/train_numeric.csv", skip=skip_rows, header=FALSE,
+    chunk <- fread(input = input, skip=skip_rows, header=FALSE,
                    nrows = chunk_size )
     names(chunk) <- names(header)
     if (nchunk == 10 & cache) { 

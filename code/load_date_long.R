@@ -1,22 +1,21 @@
+if (! grepl('\\/code$', getwd())) setwd('code')
+stopifnot (grepl('\\/code$', getwd()))
+
 library(data.table)
 library(tidyr)
 
-nrows <- 1183748 - 1
+source('bosch_plp_util.R')
+tcheck(0)
+
 nchunk <- 10
-chunk_prefix <- "../data/train_date_long_chunk_"
-chunk_size <- ceiling( nrows / 10)
+ds_switch <- "test" # "train"
+input_csv <- sprintf("../input/%s_date.csv", ds_switch)
+chunk_prefix <- sprintf("../data/%s_date_long_chunk_", ds_switch)
 
-t0 <- t1 <- proc.time()
-
-header <- fread(input = "../input/train_date.csv", nrows=1, header=TRUE)
-
-skip_rows <- 1
 for(i in 1:nchunk) {
-    cat("Loading part", i, "...")
-    chunk <- fread(input = "../input/train_date.csv", skip=skip_rows, header=FALSE,
-                             nrows = chunk_size )
+    cat("Loading chunk", i, "...\n")
+    chunk <- read_raw_chunk(i, input = input_csv)
     cat(nrow(chunk), "rows\n")
-    names(chunk) <- names(header)
     chunk <- chunk %>% gather(metric, value, -Id) %>% data.table()
     chunk <- chunk[ ! is.na(value)]
     
@@ -25,11 +24,7 @@ for(i in 1:nchunk) {
     rm(chunk)
     gc(verbose = FALSE)
     
-    t2 <- proc.time()
-    cat('...elapsed', (t2-t1)[3], read_rows,'rows\n' )
-    t1 <- t2
-    
+    tcheck(desc='loaded chunk')
+
     skip_rows <- skip_rows + chunk_size 
 }
-cat ("Total time", (t2-t0)[3], "\n")
-rm(header, chunk_prefix, skip_rows, i, chunk_size, chunk_name, nrows, t0, t1, t2)
