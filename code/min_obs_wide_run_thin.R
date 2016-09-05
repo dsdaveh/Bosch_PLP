@@ -78,7 +78,7 @@ xresults_all %>% mutate(ichunk=as.factor(ichunk)) %>%
 
 ens_results_all <- data.table()
 guess0 <- integer()
-for (ichunk in 1:1) {
+for (ichunk in 1:10) {
     source('min_obs_wide_study_submit.R')
     ens_results_all <- rbind(ens_results_all, ens_results[, chunk := ichunk])
     guess0 <- c( guess0, missing_date_ids)
