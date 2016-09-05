@@ -90,16 +90,16 @@ trn_cols <- setdiff( names(trnw_num), c("Id", "Response"))
 #                   nrounds = xgb_nrounds,
 #                   params = xgb_params, verbose = 1 )
 
-xresults <- data.frame()
+xresults <- data.frame()  # summarized results
+obs_results <- data.table()
 for (imodel in 1:10) {
     
     par.orig <- par(mfrow=c(1,2))
     model <- results[[imodel * 6]]
     probs <- predict( model, dropNA(as.matrix(trn_hold)[, trn_cols]) )
-    preds <- prediction( probs, trn_hold$Response )
+    preds <- prediction( probs, trn_hold$Response ) #ROCR
     perf <- performance(preds, "tpr", "fpr")
     plot(perf)
-    table( ifelse(probs > .5, 1, 0), trn_hold$Response)
     mcc <- performance( preds, "mat")
     mcc_vals <- unlist( attr(mcc, "y.values"))
     mcc_cuts <- unlist( attr(mcc, "x.values"))
@@ -107,14 +107,40 @@ for (imodel in 1:10) {
     plot(mcc_cuts, mcc_vals, type='l')
     abline(v=cutoff)
     par(par.orig)
+    title(sprintf("ROC & MCC for model %d using chunk %d", imodel, ichunk))
+    
     mcc_best <- max(mcc_vals, na.rm=TRUE )
+    
+    #print( table( trn_hold$Response, ifelse(probs > cutoff, 1, 0) ))
     cat( sprintf( "max MCC @ %4.2f = %f\n", cutoff, mcc_best ))
+    
+    obs_results <- rbind( 
+        obs_results, trn_hold[, .(
+            imodel, Id, probs, Response,
+            predictions = as.integer( probs >= mcc_best )
+        )])
     
     xresults <- rbind(
         xresults, data.frame( imodel=imodel, ichunk=ichunk, MCC=mcc_best, cutoff=cutoff))
-    title(sprintf("ROC & MCC for model %d using chunk %d", imodel, ichunk))
 }
 # xgb_imp <- xgb.importance( trn_cols, model=model )
 # xgb_plot <- xgb_imp %>% arrange(desc(Gain)) %>% dplyr::slice(1:30) %>% ggplot( aes(reorder(Feature,Gain), Gain)) + geom_bar(stat="identity", position='identity') + coord_flip()
+
+#ensemble results
+#################
+# method 1 - mean predictions
+# method 2 - mean probabilities
+
+ens_results <- obs_results[, .(Response = min(Response),
+                               mean_prob = mean(probs),
+                               mean_pred = mean(predictions)), by=Id]
+
+#method1 cutoff finding ratio
+cutoff_m1 <- find_cutoff_by_ratio( ens_results$mean_prob, 1/171)
+ens_results$prob_pred <- as.integer( ens_results$mean_prob >= cutoff_m1 )
+
+#method2 cutoff finding ratio
+cutoff_m2 <- find_cutoff_by_ratio( ens_results$mean_pred, 1/171)
+ens_results$pred_pred <- as.integer( ens_results$mean_prob >= cutoff_m2 )
 
 tcheck(desc= sprintf('completed chunk %d', ichunk))
