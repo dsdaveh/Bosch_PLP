@@ -47,13 +47,16 @@ pass_fail_ratio <- 200
 ##
 
 xresults_all <- data.frame()
+ens_results_all <- data.table()
 ratios <- numeric()  # keep track of the pass/fail ratio used (if param setting exceeds data)
 for (ichunk in 1:10) {
     source('min_obs_wide_study_xrun.R')
     xresults_all <-rbind(xresults_all, xresults)
     ratios <- c( ratios, floor(length(ix_pass) / nFails) )
+    ens_results_all <- rbind(ens_results_all, ens_results[, chunk := ichunk])
 }
-save(xresults_all, file='../data/min_obs_thin_xrun.RData')
+saveRDS(xresults_all, file='../data/min_obs_thin_xrun_meta.rds')
+saveRDS(ens_results_all, file='../data/min_obs_thin_xrun_ensemble.rds')
 
 summary(xresults_all$MCC)
 summary(xresults_all$cutoff)

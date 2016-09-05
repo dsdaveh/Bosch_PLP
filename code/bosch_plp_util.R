@@ -65,7 +65,7 @@ get_tcheck <- function() tcheck.df %>% mutate( delta=c( 0, diff(elapsed)) ) %>% 
 # read a chunk from the original input files
 read_raw_chunk <- function( i, nchunk = 10, input = '../input/train_numeric.csv', cache = TRUE ) {
     
-    chunk_name <- gsub("\\.csv", sprintf("_chunk%d.rds", i), input)
+    chunk_name <- gsub("\\.csv", sprintf("_raw_chunk%d.rds", i), input)
     chunk_name <- gsub("/input/", "/data/", chunk_name)
     
     #check to see if we already squirreled away this file
@@ -84,8 +84,8 @@ read_raw_chunk <- function( i, nchunk = 10, input = '../input/train_numeric.csv'
                    nrows = chunk_size )
     names(chunk) <- names(header)
     if (nchunk == 10 & cache) { 
-        warning('...saving chunk as',chunk_name, '\n')
-        loadRDS(chunk, file=chunk_name)
+        cat('...saving chunk as',chunk_name, '\n')
+        saveRDS(chunk, file=chunk_name)
     }
     return(chunk)
 }
