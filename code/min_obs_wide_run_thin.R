@@ -70,6 +70,9 @@ xresults_all %>% mutate(ichunk=as.factor(ichunk)) %>%
     geom_smooth(method="lm") +
     facet_wrap( ~mregion) + ggtitle("MCC for all models by chunk (region) model was trained on")
 
+#score m1 ensemble
+calc_mcc( with(ens_results_all, table(Response, y_m1)) )
+
 # This step runs the models for each test chunk
 ##########################
 ## parameters
