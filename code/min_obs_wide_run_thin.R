@@ -11,7 +11,7 @@ tcheck(0)
 ##########################
 ## parameters
 # ichunk contolled in for loops
-pass_fail_ratio <- 50  ## TODO - this is hard coded in min_obs_wide_study.R 
+pass_fail_ratio <- 150  
 ##
 results <- list()
 for (ichunk in 1:10) {
@@ -22,10 +22,10 @@ save(results, file='../data/min_obs_thin.RData')
 tcheck.print = FALSE
 
 fea_diffs <- list()
-ix <- 5
+ix <- 4
 fea_rank <- results[[ix]] %>% select( Feature, Gain.1 = Gain )
 
-for(i in 2:10) {
+for(i in 1:10) {
     imp2 <- results[[(i-1)*6 + ix]] %>% select( Feature, Gain)
     names(imp2) <- c("Feature", sprintf("Gain.%d", i))
     fea_diffs[[length(fea_diffs)+1]] <- setdiff( imp2$Feature, fea_rank$Feature)
