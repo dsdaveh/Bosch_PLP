@@ -11,7 +11,7 @@ tcheck(0)
 ##########################
 ## parameters
 # ichunk contolled in for loops
-# pass_fail_ratio <- 5  ## TODO - this is hard coded in min_obs_wide_study.R 
+pass_fail_ratio <- 50  ## TODO - this is hard coded in min_obs_wide_study.R 
 ##
 results <- list()
 for (ichunk in 1:10) {
@@ -74,7 +74,7 @@ xresults_all %>% mutate(ichunk=as.factor(ichunk)) %>%
 mcc_m1 <- calc_mcc( with(ens_results_all, table(Response, y_m1)) )
 
 #stacked ensemble (m2)
-trn_cols <- setdiff( names(obs_stack_all), c("Id", "Response"))
+ens_cols <- setdiff( names(obs_stack_all), c("Id", "Response"))
 
 nobs <- nrow(obs_stack_all)
 ix_hold <- sample(1:nobs, round(nobs * .2))  #so we can score the ensemble
@@ -92,7 +92,7 @@ xgb_ens_params <- list(
 )
 xgb_nrounds = 70
 
-xgb.train <- xgb.DMatrix( dropNA(as.matrix(obs_stack_all)[-ix_hold, trn_cols]), label = obs_stack_all[-ix_hold, Response], missing = 99 )
+xgb.train <- xgb.DMatrix( dropNA(as.matrix(obs_stack_all)[-ix_hold, ens_cols]), label = obs_stack_all[-ix_hold, Response], missing = 99 )
 model_m2 <- xgboost( xgb.train,
                   nrounds = xgb_nrounds,
                   params = xgb_ens_params, verbose = 1 )
@@ -122,7 +122,7 @@ saveRDS(ens_results_all, file= sprintf('../data/min_obs_thin_submit_%s.rds', dat
 sfile <- sprintf("../submissions/min_obs_thin_%s.csv", date_stamp)
 write.csv( ens_results_tst %>% select(Id, Response=prob_pred), file=sfile, row.names = FALSE)
 
-probs <- predict( model_m2, dropNA(as.matrix(obs_stack_tst)[, trn_cols]) )
+probs <- predict( model_m2, dropNA(as.matrix(obs_stack_tst)[, ens_cols]) )
 cutoff_m2_tst <- find_cutoff_by_ratio( probs, 1/171)
 sfile_m2 <- sprintf("../submissions/min_obs_thin_m2_%s.csv", date_stamp)
 m2_submit <- obs_stack_tst[, .(Id, Response = probs >= cutoff_m2_tst)]
