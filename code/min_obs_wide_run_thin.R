@@ -96,7 +96,7 @@ xgb.train <- xgb.DMatrix( dropNA(as.matrix(obs_stack_all)[-ix_hold, ens_cols]), 
 model_m2 <- xgboost( xgb.train,
                   nrounds = xgb_nrounds,
                   params = xgb_ens_params, verbose = 1 )
-probs <- predict( model_m2, dropNA(as.matrix(obs_stack_all)[ix_hold, trn_cols]) )
+probs <- predict( model_m2, dropNA(as.matrix(obs_stack_all)[ix_hold, ens_cols]) )
 cutoff_m2 <- find_cutoff_by_ratio( probs, 1/171)
 mcc_m2 <- calc_mcc( table( obs_stack_all[ix_hold, Response], as.integer(probs >= cutoff_m2)) )
 
