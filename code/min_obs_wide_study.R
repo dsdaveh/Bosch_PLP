@@ -72,7 +72,7 @@ xgb_params <- list(
     # maximize = TRUE
     verbose = 1
 )
-xgb_nrounds = 500
+xgb_nrounds = 20
 
 xgb.train <- xgb.DMatrix( dropNA(as.matrix(trnw_num)[, trn_cols]), label = trnw_num$Response, missing = 99 )
 model <- xgboost( xgb.train,
