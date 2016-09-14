@@ -80,8 +80,7 @@ read_raw_chunk <- function( i, nchunk = 10, input = '../input/train_numeric.csv'
     header <- fread(input = input, nrows=1, header=TRUE)
 
     skip_rows <- (i - 1) * chunk_size + 1
-    chunk <- fread(input = input, skip=skip_rows, header=FALSE,
-                   nrows = chunk_size )
+    chunk <- fread(input = input, skip=skip_rows, header=FALSE, nrows = chunk_size, stringsAsFactors = TRUE )
     names(chunk) <- names(header)
     if (nchunk == 10 & cache) { 
         cat('...saving chunk as',chunk_name, '\n')

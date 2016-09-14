@@ -16,10 +16,16 @@ source('bosch_plp_util.R')
 
 if(! exists("pass_fail_ratio")) pass_fail_ratio <- 5
 if(! exists("ichunk")) ichunk <- 1
+if(! exists("input_csv")) input_csv <- '../input/train_numeric.csv'
 
-trnw_num <- read_raw_chunk(ichunk, input='../input/train_numeric.csv')
+trnw <- read_raw_chunk(ichunk, input= input_csv)
 trnl_date <- readRDS(file = sprintf("../data/train_date_long_chunk_%d.rds", ichunk)) # see 'load_date_long.R'
 tcheck( desc = 'initial data load')
+
+if( ! grepl("numeric", input_csv)) {
+    truth <- readRDS(file='../data/train_response.rds')
+    trnw <- trnw[ truth, nomatch=FALSE ]
+}
 
 ## stolen from date eda
 id_cnt <- trnl_date[
@@ -31,32 +37,32 @@ id_cnt <- trnl_date[
                         , proc_time := max_time - min_time]
 rm(trnl_date); gc(); tcheck(desc='extract data features')
 
-setkey(trnw_num, Id)
+setkey(trnw, Id)
 setkey(id_cnt, Id)
 
-trnw_num <- trnw_num[ id_cnt, nomatch=FALSE]
+trnw <- trnw[ id_cnt, nomatch=FALSE]
 rm(id_cnt)
 
 ## move this to eda
 # trnw_num %>% ggplot( aes(min_time, fill=as.factor(Response) ))+ geom_density( alpha=.5)
 # trnw_num %>% ggplot( aes(min_time ))+ geom_density( alpha=.5)
 
-ix_fail <- which(trnw_num$Response == '1')
+ix_fail <- which(trnw$Response == '1')
 nFails <- length(ix_fail)
 set.seed(1912)
 ix_hold_fail <- sample( ix_fail, floor( nFails * .20 ))  # 20% holdout for testing
 ix_trn_fail <- setdiff( ix_fail, ix_hold_fail)
 
 #shrink the number of passes to choose from
-ix_pass <- sample( which(trnw_num$Response == '0'), nFails * pass_fail_ratio )
+ix_pass <- sample( which(trnw$Response == '0'), nFails * pass_fail_ratio )
 ix_hold_pass <- sample( ix_pass, floor(length(ix_pass) * .20 ))  # 20% holdout for testing
 ix_trn_pass <- setdiff( ix_pass, ix_hold_pass)
 
 # create datasets
-trn_hold <- trnw_num[ c(ix_hold_fail, ix_hold_pass) ] %>% sample_frac()
-trnw_num <- trnw_num[ c(ix_trn_fail, ix_trn_pass) ] %>% sample_frac()
+trn_hold <- trnw[ c(ix_hold_fail, ix_hold_pass) ] %>% sample_frac()
+trnw <- trnw[ c(ix_trn_fail, ix_trn_pass) ] %>% sample_frac()
 
-trn_cols <- setdiff( names(trnw_num), c("Id", "Response"))
+trn_cols <- setdiff( names(trnw), c("Id", "Response"))
 
 xgb_params <- list( 
     eta = 0.3,      #
@@ -74,7 +80,7 @@ xgb_params <- list(
 )
 xgb_nrounds = 20
 
-xgb.train <- xgb.DMatrix( dropNA(as.matrix(trnw_num)[, trn_cols]), label = trnw_num$Response, missing = 99 )
+xgb.train <- xgb.DMatrix( dropNA(as.matrix(trnw)[, trn_cols]), label = trnw$Response, missing = 99 )
 model <- xgboost( xgb.train,
                   nrounds = xgb_nrounds,
                   params = xgb_params, verbose = 1 )
