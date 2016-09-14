@@ -10,6 +10,8 @@ xgb_params <- list(
     #nthreads = 4,
     verbose = 1
 )
-
-xgb.train <- xgb.DMatrix( dropNA(as.matrix(obs_stack_all)[-ix_hold, ens_cols]), label = obs_stack_all[-ix_hold, Response], missing = 99 )
+df <- trnw
+cv_cols <- setdiff(names(df), c('Id', 'Response'))
+cv_rows <- 1:nrow(df)
+xgb.train <- xgb.DMatrix( dropNA(as.matrix(df)[cv_rows, cv_cols]), label = df[cv_rows, Response], missing = 99 )
 xgb.cv( xgb.train, nrounds = 500, params = xgb_params, nfold=5, verbose = 1, early.stop.round = 10 )
