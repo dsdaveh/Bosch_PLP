@@ -19,6 +19,11 @@ if(! exists("ichunk")) ichunk <- 1
 if(! exists("input_csv")) input_csv <- '../input/train_numeric.csv'
 
 trnw <- read_raw_chunk(ichunk, input= input_csv)
+
+# number of na's os a feature (might be the only feature for some categorical observations)
+trnw$na_count <- apply(trnw, 1, function(x) sum(is.na(x))) 
+setkey(trnw, Id)
+
 trnl_date <- readRDS(file = sprintf("../data/train_date_long_chunk_%d.rds", ichunk)) # see 'load_date_long.R'
 tcheck( desc = 'initial data load')
 
@@ -37,7 +42,6 @@ id_cnt <- trnl_date[
                         , proc_time := max_time - min_time]
 rm(trnl_date); gc(); tcheck(desc='extract data features')
 
-setkey(trnw, Id)
 setkey(id_cnt, Id)
 
 trnw <- trnw[ id_cnt, nomatch=FALSE]
@@ -78,13 +82,15 @@ xgb_params <- list(
     # maximize = TRUE
     verbose = 1
 )
-xgb_nrounds = 20
+xgb_nrounds = 500
 
-xgb.train <- xgb.DMatrix( dropNA(as.matrix(trnw)[, trn_cols]), label = trnw$Response, missing = 99 )
+na_cols = which( lapply(trnw, function(x) all(is.na(x))) == TRUE )
+trn_cols2 <- setdiff(trn_cols, names(na_cols))
+xgb.train <- xgb.DMatrix( dropNA(as.matrix(trnw[, .SD, .SDcols = trn_cols2])), label = trnw$Response, missing = 99 )
 model <- xgboost( xgb.train,
                   nrounds = xgb_nrounds,
                   params = xgb_params, verbose = 1 )
-probs <- predict( model, dropNA(as.matrix(trn_hold)[, trn_cols]) )
+probs <- predict( model, dropNA(as.matrix(trn_hold[, .SD, .SDcols = trn_cols2]) ) )
 preds <- prediction( probs, trn_hold$Response )
 perf <- performance(preds, "tpr", "fpr")
 plot(perf)
@@ -102,5 +108,4 @@ xgb_imp <- xgb.importance( trn_cols, model=model )
 xgb_plot <- xgb_imp %>% arrange(desc(Gain)) %>% dplyr::slice(1:30) %>% ggplot( aes(reorder(Feature,Gain), Gain)) + geom_bar(stat="identity", position='identity') + coord_flip()
 
 chunk_results <- list( chunk=ichunk, MCC=mcc_best, cutoff=cutoff, xgb_imp=xgb_imp, plot_imp=xgb_plot, xgb=model)
-results <- c(results, chunk_results)
 tcheck(desc= sprintf('completed chunk %d', ichunk))
