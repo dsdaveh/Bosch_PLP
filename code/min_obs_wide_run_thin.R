@@ -10,7 +10,7 @@ tcheck(0)
 ##########################
 ## parameters
 # ichunk contolled in for loops
-pass_fail_ratio <- 5  
+pass_fail_ratio <- 50  
 input_csv <- '../input/train_categorical.csv'
 ##########################
 results <- list()
@@ -92,6 +92,7 @@ xgb_ens_params <- list(
 )
 xgb_nrounds = 70
 
+obs_stack_all$Response <- as.integer(obs_stack_all$Response) #precautionary
 xgb.train <- xgb.DMatrix( dropNA(as.matrix(obs_stack_all)[-ix_hold, ens_cols]), label = obs_stack_all[-ix_hold, Response], missing = 99 )
 model_m2 <- xgboost( xgb.train,
                   nrounds = xgb_nrounds,
@@ -109,6 +110,7 @@ mcc_m2 <- calc_mcc( table( obs_stack_all[ix_hold, Response], as.integer(probs >=
 ens_results_tst <- data.table()
 obs_stack_tst <- data.table()
 guess0 <- integer()
+test_csv <- gsub("train", "test", input_csv)
 for (ichunk in 1:10) {
     source('min_obs_wide_study_submit.R')
     ens_results_tst <- rbind(ens_results_tst, ens_results[, chunk := ichunk])
