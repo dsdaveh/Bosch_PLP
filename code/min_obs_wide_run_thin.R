@@ -11,7 +11,7 @@ tcheck(0)
 ##########################
 ## parameters
 # ichunk contolled in for loops
-pass_fail_ratio <- 150  
+pass_fail_ratio <- 5  
 ##
 results <- list()
 for (ichunk in 1:10) {
@@ -26,7 +26,7 @@ ix <- 4
 fea_rank <- results[[ix]] %>% select( Feature, Gain.1 = Gain )
 
 for(i in 1:10) {
-    imp2 <- results[[(i-1)*6 + ix]] %>% select( Feature, Gain)
+    imp2 <- results[[(i-1)*7 + ix]] %>% select( Feature, Gain)
     names(imp2) <- c("Feature", sprintf("Gain.%d", i))
     fea_diffs[[length(fea_diffs)+1]] <- setdiff( imp2$Feature, fea_rank$Feature)
     fea_rank <- merge( fea_rank, imp2, by="Feature", all=TRUE)
@@ -43,7 +43,7 @@ fea_top30 %>% select( -Feature, -Gain.sum) %>% gather(model, Gain) %>%
 ##########################
 ## parameters
 # ichunk contolled in for loops
-pass_fail_ratio <- 200  
+pass_fail_ratio <- 200  # don't change this ... 200 basically tests on all the test data
 ##
 
 xresults_all <- data.frame()

@@ -101,11 +101,13 @@ mcc_cuts <- unlist( attr(mcc, "x.values"))
 cutoff <- mcc_cuts[ which.max(mcc_vals)]
 plot(mcc_cuts, mcc_vals, type='l')
 abline(v=cutoff)
+title(paste("MMC versus cuttof for chunk", ichunk))
 mcc_best <- max(mcc_vals, na.rm=TRUE )
 cat( sprintf( "max MCC @ %4.2f = %f\n", cutoff, mcc_best ))
 
 xgb_imp <- xgb.importance( trn_cols, model=model )
 xgb_plot <- xgb_imp %>% arrange(desc(Gain)) %>% dplyr::slice(1:30) %>% ggplot( aes(reorder(Feature,Gain), Gain)) + geom_bar(stat="identity", position='identity') + coord_flip()
 
-chunk_results <- list( chunk=ichunk, MCC=mcc_best, cutoff=cutoff, xgb_imp=xgb_imp, plot_imp=xgb_plot, xgb=model)
+chunk_results <- list( chunk=ichunk, MCC=mcc_best, cutoff=cutoff, xgb_imp=xgb_imp,
+                       plot_imp=xgb_plot, cols_used=trn_cols2, xgb=model)
 tcheck(desc= sprintf('completed chunk %d', ichunk))
