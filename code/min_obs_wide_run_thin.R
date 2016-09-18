@@ -6,13 +6,13 @@ tcheck.print = TRUE
 tcheck(0)
 
 
-
 # This step creates the models for each chunk and runs a test on the same chunk (results)
 ##########################
 ## parameters
 # ichunk contolled in for loops
 pass_fail_ratio <- 5  
-##
+input_csv <- '../input/train_categorical.csv'
+##########################
 results <- list()
 for (ichunk in 1:10) {
     source('min_obs_wide_study.R')

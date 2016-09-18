@@ -20,8 +20,14 @@ source('bosch_plp_util.R')
 
 ## parameters
 if(! exists("ichunk")) ichunk <- 1
+if(! exists("input_csv")) test_csv <- '../input/test_numeric.csv'
 ## 
-tstw_num <- read_raw_chunk(ichunk, input='../input/test_numeric.csv')
+tstw <- read_raw_chunk(ichunk, input=test_csv)
+
+# number of na's os a feature (might be the only feature for some categorical observations)
+tstw$na_count <- apply(tstw, 1, function(x) sum(is.na(x))) 
+setkey(tstw, Id)
+
 tstl_date <- readRDS(file = sprintf("../data/test_date_long_chunk_%d.rds", ichunk)) # see 'load_date_long.R'
 tcheck( desc = 'initial data load')
 
@@ -35,89 +41,24 @@ id_cnt <- tstl_date[
                         , proc_time := max_time - min_time]
 rm(tstl_date); gc(); tcheck(desc='extract data features')
 
-setkey(tstw_num, Id)
 setkey(id_cnt, Id)
 
-all_ids <- tstw_num$Id
-tstw_num <- tstw_num[ id_cnt, nomatch=FALSE]
+all_ids <- tstw$Id
+tstw <- tstw[ id_cnt, nomatch=FALSE]
 rm(id_cnt)
 
-missing_date_ids <- setdiff(all_ids, tstw_num$Id) 
-
-## move this to eda
-# trnw_num %>% ggplot( aes(min_time, fill=as.factor(Response) ))+ geom_density( alpha=.5)
-# trnw_num %>% ggplot( aes(min_time ))+ geom_density( alpha=.5)
-
-# ix_fail <- which(trnw_num$Response == '1')
-# nFails <- length(ix_fail)
-# set.seed(1912)
-# ix_hold_fail <- sample( ix_fail, floor( nFails * .20 ))  # 20% holdout for testing
-### ix_trn_fail <- setdiff( ix_fail, ix_hold_fail)
-
-#shrink the number of passes to choose from
-# n_pass_size <- nFails * pass_fail_ratio
-# ix_pass <- which(trnw_num$Response == '0')
-# if (n_pass_size > length(ix_pass)) {
-#     warning( sprintf(
-#         "Request pass/fail ratio (%d) exeeds the data (%d) using full set\n",
-#         floor(pass_fail_ratio), floor(length(ix_pass) / nFails) ))
-# } else {
-#     ix_pass <- sample( ix_pass, n_pass_size )
-# }
-# ix_hold_pass <- sample( ix_pass, floor(length(ix_pass) * .20 ))  # 20% holdout for testing
-# ### ix_trn_pass <- setdiff( ix_pass, ix_hold_pass)
-# 
-# # create datasets
-# trn_hold <- trnw_num[ c(ix_hold_fail, ix_hold_pass) ] %>% sample_frac()
-# ### trnw_num <- trnw_num[ c(ix_trn_fail, ix_trn_pass) ] %>% sample_frac()
-
-trn_cols <- setdiff( names(trnw_num), c("Id", "Response"))
-# 
-# xgb_params <- list( 
-#     eta = 0.3,      #
-#     #     max_depth = 6,   # 
-#     #     gamma = 0.5,     # 
-#     #     min_child_weight = 5, #
-#     #     subsample = 0.5,
-#     #     colsample_bytree = 0.5, 
-#     eval_metric = "logloss", #mlogloss",  #map@3",
-#     objective = "binary:logistic",
-#     # num_class = 12,
-#     nthreads = 4,
-#     # maximize = TRUE
-#     verbose = 1
-# )
-# xgb_nrounds = 500
-# 
-# xgb.train <- xgb.DMatrix( dropNA(as.matrix(trnw_num)[, trn_cols]), label = trnw_num$Response, missing = 99 )
-# model <- xgboost( xgb.train,
-#                   nrounds = xgb_nrounds,
-#                   params = xgb_params, verbose = 1 )
+missing_date_ids <- setdiff(all_ids, tstw$Id) 
 
 xresults <- data.frame()  # summarized results
 obs_results <- data.table()
-obs_stack <- tstw_num[, .(Id)]
+obs_stack <- tstw[, .(Id)]
+reslen <- 7  # this should match the length of chunk_results in min_obs_wide_study.R
+
 for (imodel in 1:10) {
-    
-#     par.orig <- par(mfrow=c(1,2))
-    model <- results[[imodel * 6]]
-    probs <- predict( model, dropNA(as.matrix(tstw_num)[, trn_cols]) ); tcheck(desc=sprintf("run model%d", imodel))
-#     preds <- prediction( probs, trn_hold$Response ) #ROCR
-#     perf <- performance(preds, "tpr", "fpr")
-#     plot(perf)
-#     mcc <- performance( preds, "mat")
-#     mcc_vals <- unlist( attr(mcc, "y.values"))
-#     mcc_cuts <- unlist( attr(mcc, "x.values"))
-#     cutoff <- mcc_cuts[ which.max(mcc_vals)]
-#     plot(mcc_cuts, mcc_vals, type='l')
-#     abline(v=cutoff)
-#     par(par.orig)
-#     title(sprintf("ROC & MCC for model %d using chunk %d", imodel, ichunk))
-#     
-#     mcc_best <- max(mcc_vals, na.rm=TRUE )
-#     
-#     #print( table( trn_hold$Response, ifelse(probs > cutoff, 1, 0) ))
-#     cat( sprintf( "max MCC @ %4.2f = %f\n", cutoff, mcc_best ))
+
+    model_cols <- results[[ (imodel - 1) * reslen + 6 ]]
+    model <- results[[imodel * reslen]]
+    probs <- predict( model, dropNA(as.matrix(tstw[, .SD, .SDcols = model_cols ]) )); tcheck(desc=sprintf("run model%d", imodel))
     cutoff <- find_cutoff_by_ratio( probs, 1/171)  
     yhat <- as.integer( probs >= cutoff)
     
@@ -128,7 +69,7 @@ for (imodel in 1:10) {
     rm(answers)
     
     obs_results <- rbind( 
-        obs_results, tstw_num[, .(
+        obs_results, tstw[, .(
             imodel, Id, probs
         )])
 }

@@ -20,10 +20,21 @@ source('bosch_plp_util.R')
 ## parameters
 if(! exists("pass_fail_ratio")) pass_fail_ratio <- 5
 if(! exists("ichunk")) ichunk <- 1
+if(! exists("input_csv")) input_csv <- '../input/train_numeric.csv'
 ## 
-trnw_num <- read_raw_chunk(ichunk, input='../input/train_numeric.csv')
+trnw <- read_raw_chunk(ichunk, input=input_csv )
+
+# number of na's os a feature (might be the only feature for some categorical observations)
+trnw$na_count <- apply(trnw, 1, function(x) sum(is.na(x))) 
+setkey(trnw, Id)
+
 trnl_date <- readRDS(file = sprintf("../data/train_date_long_chunk_%d.rds", ichunk)) # see 'load_date_long.R'
 tcheck( desc = 'initial data load')
+
+if( ! grepl("numeric", input_csv)) {
+    truth <- readRDS(file='../data/train_response.rds')
+    trnw <- trnw[ truth, nomatch=FALSE ]
+}
 
 ## stolen from date eda
 id_cnt <- trnl_date[
@@ -35,17 +46,12 @@ id_cnt <- trnl_date[
                         , proc_time := max_time - min_time]
 rm(trnl_date); gc(); tcheck(desc='extract data features')
 
-setkey(trnw_num, Id)
 setkey(id_cnt, Id)
 
-trnw_num <- trnw_num[ id_cnt, nomatch=FALSE]
+trnw <- trnw[ id_cnt, nomatch=FALSE]
 rm(id_cnt)
 
-## move this to eda
-# trnw_num %>% ggplot( aes(min_time, fill=as.factor(Response) ))+ geom_density( alpha=.5)
-# trnw_num %>% ggplot( aes(min_time ))+ geom_density( alpha=.5)
-
-ix_fail <- which(trnw_num$Response == '1')
+ix_fail <- which(trnw$Response == '1')
 nFails <- length(ix_fail)
 set.seed(1912)
 ix_hold_fail <- sample( ix_fail, floor( nFails * .20 ))  # 20% holdout for testing
@@ -53,7 +59,7 @@ ix_hold_fail <- sample( ix_fail, floor( nFails * .20 ))  # 20% holdout for testi
 
 #shrink the number of passes to choose from
 n_pass_size <- nFails * pass_fail_ratio
-ix_pass <- which(trnw_num$Response == '0')
+ix_pass <- which(trnw$Response == '0')
 if (n_pass_size > length(ix_pass)) {
     warning( sprintf(
         "Request pass/fail ratio (%d) exeeds the data (%d) using full set\n",
@@ -65,40 +71,18 @@ ix_hold_pass <- sample( ix_pass, floor(length(ix_pass) * .20 ))  # 20% holdout f
 ### ix_trn_pass <- setdiff( ix_pass, ix_hold_pass)
 
 # create datasets
-trn_hold <- trnw_num[ c(ix_hold_fail, ix_hold_pass) ] %>% sample_frac()
-### trnw_num <- trnw_num[ c(ix_trn_fail, ix_trn_pass) ] %>% sample_frac()
-
-trn_cols <- setdiff( names(trnw_num), c("Id", "Response"))
-# 
-# xgb_params <- list( 
-#     eta = 0.3,      #
-#     #     max_depth = 6,   # 
-#     #     gamma = 0.5,     # 
-#     #     min_child_weight = 5, #
-#     #     subsample = 0.5,
-#     #     colsample_bytree = 0.5, 
-#     eval_metric = "logloss", #mlogloss",  #map@3",
-#     objective = "binary:logistic",
-#     # num_class = 12,
-#     nthreads = 4,
-#     # maximize = TRUE
-#     verbose = 1
-# )
-# xgb_nrounds = 500
-# 
-# xgb.train <- xgb.DMatrix( dropNA(as.matrix(trnw_num)[, trn_cols]), label = trnw_num$Response, missing = 99 )
-# model <- xgboost( xgb.train,
-#                   nrounds = xgb_nrounds,
-#                   params = xgb_params, verbose = 1 )
+trn_hold <- trnw[ c(ix_hold_fail, ix_hold_pass) ] %>% sample_frac()
 
 xresults <- data.frame()  # summarized results
 obs_results <- data.table()
 obs_stack <- trn_hold[, .(Id, Response)]
+reslen <- 7  # this should match the length of chunk_results in min_obs_wide_study.R
 for (imodel in 1:10) {
     
+    model_cols <- results[[ (imodel - 1) * reslen + 6 ]]
     par.orig <- par(mfrow=c(1,2))
-    model <- results[[imodel * 6]]
-    probs <- predict( model, dropNA(as.matrix(trn_hold)[, trn_cols]) )
+    model <- results[[imodel * reslen]]
+    probs <- predict( model, dropNA(as.matrix(trn_hold[, .SD, .SDcols = model_cols ]) ))
     preds <- prediction( probs, trn_hold$Response ) #ROCR
     perf <- performance(preds, "tpr", "fpr")
     plot(perf)
