@@ -13,7 +13,7 @@ tcheck(0)
 if(! exists("pass_fail_ratio")) pass_fail_ratio <- 50
 if(! exists("input_csv")) input_csv <- '../input/train_numeric.csv'
 ##########################
-cat("pase_fail_ratio for train =", pass_fail_ratio, "\n")
+cat("pass_fail_ratio for train =", pass_fail_ratio, "\n")
 cat("training input =", input_csv, "\n")
 
 results <- list()
@@ -123,7 +123,7 @@ for (ichunk in 1:10) {
 ens_results_tst <- rbind(ens_results_tst, data.table( Id=guess0, mean_prob=0, prob_pred=0, chunk=0))
 
 date_stamp <- format(Sys.time(), "%Y_%m_%d_%H%M%S")
-saveRDS(ens_results_all, file= sprintf('../data/min_obs_thin_submit_%s.rds', date_stamp))
+saveRDS(ens_results_tst, file= sprintf('../data/min_obs_thin_submit_%s.rds', date_stamp))
 sfile <- sprintf("../submissions/min_obs_thin_%s.csv", date_stamp)
 write.csv( ens_results_tst %>% select(Id, Response=prob_pred), file=sfile, row.names = FALSE)
 
