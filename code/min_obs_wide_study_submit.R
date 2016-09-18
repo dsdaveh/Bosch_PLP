@@ -39,7 +39,7 @@ id_cnt <- tstl_date[
                 , .(station_count = .N, metric_count = sum(station_metric_count),
                     min_time = min(time_in), max_time = max(time_out)), by=Id ][  #rollup by Id
                         , proc_time := max_time - min_time]
-rm(tstl_date); gc(); tcheck(desc='extract data features')
+rm(tstl_date); gc(); tcheck(desc='extract date features')
 
 setkey(id_cnt, Id)
 
@@ -49,7 +49,6 @@ rm(id_cnt)
 
 missing_date_ids <- setdiff(all_ids, tstw$Id) 
 
-xresults <- data.frame()  # summarized results
 obs_results <- data.table()
 obs_stack <- tstw[, .(Id)]
 reslen <- 7  # this should match the length of chunk_results in min_obs_wide_study.R
@@ -59,7 +58,7 @@ for (imodel in 1:10) {
     model_cols <- results[[ (imodel - 1) * reslen + 6 ]]
     model <- results[[imodel * reslen]]
     probs <- predict( model, dropNA(as.matrix(tstw[, .SD, .SDcols = model_cols ]) )); tcheck(desc=sprintf("run model%d", imodel))
-    cutoff <- find_cutoff_by_ratio( probs, 1/171)  
+    cutoff <- find_cutoff_by_ratio( probs, 1/171)  #TODO Optimize this by chunk
     yhat <- as.integer( probs >= cutoff)
     
     # add results as columns

@@ -61,7 +61,10 @@ tcheck <- function(t=1, desc = tcheck.default_string() ) {
         #         print ( tcheck.tx[[tn]] - tcheck.tx[[tn-t]]) 
     }
 }
-get_tcheck <- function() tcheck.df %>% mutate( delta=c( 0, diff(elapsed)) ) %>% select( desc, delta)
+get_tcheck <- function() tcheck.df %>% 
+    mutate( delta=c( 0, diff(elapsed)) ) %>% 
+    select( desc, delta) %>% 
+    mutate( elapsed=cumsum(delta))
 
 # read a chunk from the original input files
 read_raw_chunk <- function( i, nchunk = 10, input = '../input/train_numeric.csv', cache = TRUE ) {
