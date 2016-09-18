@@ -18,7 +18,7 @@ library(recommenderlab)
 source('bosch_plp_util.R')
 
 ## parameters
-if(! exists("pass_fail_ratio")) pass_fail_ratio <- 5
+if(! exists("pass_fail_ratio_score")) pass_fail_ratio_score <- 200
 if(! exists("ichunk")) ichunk <- 1
 if(! exists("input_csv")) input_csv <- '../input/train_numeric.csv'
 ## 
@@ -58,12 +58,12 @@ ix_hold_fail <- sample( ix_fail, floor( nFails * .20 ))  # 20% holdout for testi
 ### ix_trn_fail <- setdiff( ix_fail, ix_hold_fail)
 
 #shrink the number of passes to choose from
-n_pass_size <- nFails * pass_fail_ratio
+n_pass_size <- nFails * pass_fail_ratio_score
 ix_pass <- which(trnw$Response == '0')
 if (n_pass_size > length(ix_pass)) {
     warning( sprintf(
         "Request pass/fail ratio (%d) exeeds the data (%d) using full set\n",
-        floor(pass_fail_ratio), floor(length(ix_pass) / nFails) ))
+        floor(pass_fail_ratio_score), floor(length(ix_pass) / nFails) ))
 } else {
     ix_pass <- sample( ix_pass, n_pass_size )
 }

@@ -10,9 +10,12 @@ tcheck(0)
 ##########################
 ## parameters
 # ichunk contolled in for loops
-pass_fail_ratio <- 50  
-input_csv <- '../input/train_categorical.csv'
+if(! exists("pass_fail_ratio")) pass_fail_ratio <- 50
+if(! exists("input_csv")) input_csv <- '../input/train_numeric.csv'
 ##########################
+cat("pase_fail_ratio for train =", pass_fail_ratio, "\n")
+cat("training input =", input_csv, "\n")
+
 results <- list()
 for (ichunk in 1:10) {
     source('min_obs_wide_study.R')
@@ -43,7 +46,7 @@ fea_top30 %>% select( -Feature, -Gain.sum) %>% gather(model, Gain) %>%
 ##########################
 ## parameters
 # ichunk contolled in for loops
-pass_fail_ratio <- 200  # don't change this ... 200 basically tests on all the test data
+pass_fail_ratio_score <- 200  # don't change this ... 200 basically tests on all the test data
 ##
 
 xresults_all <- data.frame()
