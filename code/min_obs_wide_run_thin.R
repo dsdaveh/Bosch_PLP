@@ -123,7 +123,8 @@ for (ichunk in 1:10) {
 ens_results_tst <- rbind(ens_results_tst, data.table( Id=guess0, mean_prob=0, prob_pred=0, chunk=0))
 
 date_stamp <- format(Sys.time(), "%Y_%m_%d_%H%M%S")
-saveRDS(ens_results_tst, file= sprintf('../data/min_obs_thin_submit_%s.rds', date_stamp))
+saveRDS(ens_results_tst, file= sprintf('../data/min_obs_thin_submit_m1_%s.rds', date_stamp))
+saveRDS(obs_stack_tst,   file= sprintf('../data/min_obs_thin_submit_m2_%s.rds', date_stamp))
 sfile <- sprintf("../submissions/min_obs_thin_%s.csv", date_stamp)
 write.csv( ens_results_tst %>% select(Id, Response=prob_pred), file=sfile, row.names = FALSE)
 
