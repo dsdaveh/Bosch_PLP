@@ -50,8 +50,10 @@ Temporary Items
 input/*
 data/*
 submissions/*
+code/stash/*
 
 *.Rhistory
 *.Rproj
 *.RData
 *.html
+*.bak

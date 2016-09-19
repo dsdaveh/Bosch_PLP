@@ -6,13 +6,16 @@ tcheck.print = TRUE
 tcheck(0)
 
 
-
 # This step creates the models for each chunk and runs a test on the same chunk (results)
 ##########################
 ## parameters
 # ichunk contolled in for loops
-pass_fail_ratio <- 150  
-##
+if(! exists("pass_fail_ratio")) pass_fail_ratio <- 50
+if(! exists("input_csv")) input_csv <- '../input/train_numeric.csv'
+##########################
+cat("pass_fail_ratio for train =", pass_fail_ratio, "\n")
+cat("training input =", input_csv, "\n")
+
 results <- list()
 for (ichunk in 1:10) {
     source('min_obs_wide_study.R')
@@ -26,7 +29,7 @@ ix <- 4
 fea_rank <- results[[ix]] %>% select( Feature, Gain.1 = Gain )
 
 for(i in 1:10) {
-    imp2 <- results[[(i-1)*6 + ix]] %>% select( Feature, Gain)
+    imp2 <- results[[(i-1)*7 + ix]] %>% select( Feature, Gain)
     names(imp2) <- c("Feature", sprintf("Gain.%d", i))
     fea_diffs[[length(fea_diffs)+1]] <- setdiff( imp2$Feature, fea_rank$Feature)
     fea_rank <- merge( fea_rank, imp2, by="Feature", all=TRUE)
@@ -43,7 +46,7 @@ fea_top30 %>% select( -Feature, -Gain.sum) %>% gather(model, Gain) %>%
 ##########################
 ## parameters
 # ichunk contolled in for loops
-pass_fail_ratio <- 200  
+pass_fail_ratio_score <- 200  # don't change this ... 200 basically tests on all the test data
 ##
 
 xresults_all <- data.frame()
@@ -92,6 +95,7 @@ xgb_ens_params <- list(
 )
 xgb_nrounds = 70
 
+obs_stack_all$Response <- as.integer(obs_stack_all$Response) #precautionary
 xgb.train <- xgb.DMatrix( dropNA(as.matrix(obs_stack_all)[-ix_hold, ens_cols]), label = obs_stack_all[-ix_hold, Response], missing = 99 )
 model_m2 <- xgboost( xgb.train,
                   nrounds = xgb_nrounds,
@@ -109,6 +113,7 @@ mcc_m2 <- calc_mcc( table( obs_stack_all[ix_hold, Response], as.integer(probs >=
 ens_results_tst <- data.table()
 obs_stack_tst <- data.table()
 guess0 <- integer()
+test_csv <- gsub("train", "test", input_csv)
 for (ichunk in 1:10) {
     source('min_obs_wide_study_submit.R')
     ens_results_tst <- rbind(ens_results_tst, ens_results[, chunk := ichunk])
@@ -118,7 +123,8 @@ for (ichunk in 1:10) {
 ens_results_tst <- rbind(ens_results_tst, data.table( Id=guess0, mean_prob=0, prob_pred=0, chunk=0))
 
 date_stamp <- format(Sys.time(), "%Y_%m_%d_%H%M%S")
-saveRDS(ens_results_all, file= sprintf('../data/min_obs_thin_submit_%s.rds', date_stamp))
+saveRDS(ens_results_tst, file= sprintf('../data/min_obs_thin_submit_m1_%s.rds', date_stamp))
+saveRDS(obs_stack_tst,   file= sprintf('../data/min_obs_thin_submit_m2_%s.rds', date_stamp))
 sfile <- sprintf("../submissions/min_obs_thin_%s.csv", date_stamp)
 write.csv( ens_results_tst %>% select(Id, Response=prob_pred), file=sfile, row.names = FALSE)
 

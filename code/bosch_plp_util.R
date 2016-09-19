@@ -1,4 +1,5 @@
 library(dplyr)
+library(data.table)
 
 EOL = "\n"
 
@@ -60,10 +61,15 @@ tcheck <- function(t=1, desc = tcheck.default_string() ) {
         #         print ( tcheck.tx[[tn]] - tcheck.tx[[tn-t]]) 
     }
 }
-get_tcheck <- function() tcheck.df %>% mutate( delta=c( 0, diff(elapsed)) ) %>% select( desc, delta)
+get_tcheck <- function() tcheck.df %>% 
+    mutate( delta=c( 0, diff(elapsed)) ) %>% 
+    select( desc, delta) %>% 
+    mutate( elapsed=cumsum(delta))
 
 # read a chunk from the original input files
 read_raw_chunk <- function( i, nchunk = 10, input = '../input/train_numeric.csv', cache = TRUE ) {
+    #assumes categorical data has been converted to numeric with
+    # sed -i.orig 's/T//g' XXX_categorical.csv    # XXX = [train|test]
     
     chunk_name <- gsub("\\.csv", sprintf("_raw_chunk%d.rds", i), input)
     chunk_name <- gsub("/input/", "/data/", chunk_name)
@@ -73,14 +79,22 @@ read_raw_chunk <- function( i, nchunk = 10, input = '../input/train_numeric.csv'
         chunk <- readRDS(file=chunk_name)
         return(chunk)
     }
-    ncols <- ifelse( grepl("train_numeric", input), 970, 969)
-    nrows <- ifelse( grepl("train_",        input), 1183747, 1183747)
+
+    nrows <- ifelse( grepl("train_",        input), 1183747, 1183748)
     chunk_size <- ceiling( nrows / 10)
     
     header <- fread(input = input, nrows=1, header=TRUE)
-
+#     nfea <- ncol(header) - 1
+#     ctype <- ifelse( grepl("categorical",   input), "character", "numeric")
+#     ctypes <- c("integer", rep(ctype, nfea))
+#     if (grepl("train_numeric", input)) {
+#         nfea <- nfea - 1 # last column is response
+#         ctypes <- c(ctypes, "integer")
+#     } 
+    
     skip_rows <- (i - 1) * chunk_size + 1
-    chunk <- fread(input = input, skip=skip_rows, header=FALSE, nrows = chunk_size, stringsAsFactors = TRUE )
+    chunk <- fread(input = input, skip=skip_rows, header=FALSE, nrows = chunk_size)
+#                   colClasses = ctypes, na.strings = "", stringsAsFactors = TRUE )
     names(chunk) <- names(header)
     if (nchunk == 10 & cache) { 
         cat('...saving chunk as',chunk_name, '\n')
