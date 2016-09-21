@@ -1,7 +1,12 @@
 # _run_thin runs  _study multiple times over different chunks
 
-library(tidyr)
+if (! grepl('\\/code$', getwd())) setwd('code')
+stopifnot (grepl('\\/code$', getwd()))
 
+library(tidyr)
+library(gridExtra)
+
+source('bosch_plp_util.R')
 tcheck.print = TRUE
 tcheck(0)
 
@@ -10,7 +15,7 @@ tcheck(0)
 ##########################
 ## parameters
 # ichunk contolled in for loops
-if(! exists("pass_fail_ratio")) pass_fail_ratio <- 50
+if(! exists("pass_fail_ratio")) pass_fail_ratio <- 200
 if(! exists("input_csv")) input_csv <- '../input/train_numeric.csv'
 ##########################
 cat("pass_fail_ratio for train =", pass_fail_ratio, "\n")
@@ -22,7 +27,6 @@ for (ichunk in 1:10) {
     results <- c(results, chunk_results)
 }
 save(results, file='../data/min_obs_thin.RData')
-tcheck.print = FALSE
 
 fea_diffs <- list()
 ix <- 4
@@ -36,10 +40,10 @@ for(i in 1:10) {
 }
 fea_rank$Gain.sum <- fea_rank %>% select(-Feature) %>% as.matrix() %>% rowSums(na.rm=TRUE)
 fea_top30 <- fea_rank %>% arrange(desc(Gain.sum)) %>% dplyr::slice(1:30)
-fea_top30 %>% ggplot( aes(reorder(Feature,Gain.sum), Gain.sum)) +
+plot_top30 <- fea_top30 %>% ggplot( aes(reorder(Feature,Gain.sum), Gain.sum)) +
     geom_bar(stat="identity", position='identity') + coord_flip()
 
-fea_top30 %>% select( -Feature, -Gain.sum) %>% gather(model, Gain) %>%
+plot_top30_range <- fea_top30 %>% select( -Feature, -Gain.sum) %>% gather(model, Gain) %>%
     ggplot( aes(model, Gain, group=model)) + geom_bar(stat="sum")
 
 # This step runs the models for each chunk (xresults_all)
@@ -116,7 +120,7 @@ guess0 <- integer()
 test_csv <- gsub("train", "test", input_csv)
 for (ichunk in 1:10) {
     source('min_obs_wide_study_submit.R')
-    ens_results_tst <- rbind(ens_results_tst, ens_results[, chunk := ichunk])
+    ens_results_tst <- rbind(ens_results_tst, ens_results[, chunk := ichunk]); tcheck(desc=paste0('predict on test chunk', ichunk))
     guess0 <- c( guess0, missing_date_ids)
     obs_stack_tst <- rbind(obs_stack_tst, obs_stack)
 }
@@ -134,3 +138,13 @@ sfile_m2 <- sprintf("../submissions/min_obs_thin_m2_%s.csv", date_stamp)
 m2_submit <- obs_stack_tst[, .(Id, Response = probs >= cutoff_m2_tst)]
 m2_submit <- rbind(m2_submit, data.table( Id=guess0, Response=0))
 write.csv( m2_submit, file=sfile_m2, row.names = FALSE)
+
+#summary for notes
+plot_MCC <- xresults_all %>% ggplot(aes(MCC)) + geom_density() + ggtitle ('MCC Density')
+grid.arrange( plot_MCC, plot_top30, ncol=2)
+mcc_m1
+mcc_m2
+summary(xresults_all$MCC)
+sd(xresults_all$MCC)
+
+tcheck(desc='Completed run')
