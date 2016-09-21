@@ -58,7 +58,7 @@ ix_hold_fail <- sample( ix_fail, floor( nFails * .20 ))  # 20% holdout for testi
 ix_trn_fail <- setdiff( ix_fail, ix_hold_fail)
 
 #shrink the number of passes to choose from
-ix_pass <- sample( which(trnw$Response == '0'), nFails * pass_fail_ratio )
+ix_pass <- sample( which(trnw$Response == '0'), min(nFails * pass_fail_ratio, sum(trnw$Response == '0')) )
 ix_hold_pass <- sample( ix_pass, floor(length(ix_pass) * .20 ))  # 20% holdout for testing
 ix_trn_pass <- setdiff( ix_pass, ix_hold_pass)
 
