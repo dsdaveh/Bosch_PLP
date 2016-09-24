@@ -17,10 +17,13 @@ library(recommenderlab)
 
 source('bosch_plp_util.R')
 
+stopifnot(exists("pass_fail_ratio"))  #this should be set from training step
+
 ## parameters
 if(! exists("pass_fail_ratio_score")) pass_fail_ratio_score <- 200
 if(! exists("ichunk")) ichunk <- 1
 if(! exists("input_csv")) input_csv <- '../input/train_numeric.csv'
+if(! exists("seed"))seed <- 1912
 ## 
 trnw <- read_raw_chunk(ichunk, input=input_csv )
 
@@ -53,16 +56,22 @@ rm(id_cnt)
 
 ix_fail <- which(trnw$Response == '1')
 nFails <- length(ix_fail)
-set.seed(1912)
+set.seed(seed)
 ix_hold_fail <- sample( ix_fail, floor( nFails * .20 ))  # 20% holdout for testing
 ### ix_trn_fail <- setdiff( ix_fail, ix_hold_fail)
 
+#reconstruct the list of passes used for training (assumes seed and pass_fail_ratio have not changed)
+ix_pass <- sample( which(trnw$Response == '0'), min(nFails * pass_fail_ratio, sum(trnw$Response == '0')) )
+ix_hold_pass <- sample( ix_pass, floor(length(ix_pass) * .20 ))  # 20% holdout for testing
+ix_trn_pass <- setdiff( ix_pass, ix_hold_pass)
+ix_oos_pass <- setdiff( which(trnw$Response == '0'), ix_trn_pass)
+
 #shrink the number of passes to choose from
 n_pass_size <- nFails * pass_fail_ratio_score
-ix_pass <- which(trnw$Response == '0')
+ix_pass <- ix_oos_pass
 if (n_pass_size > length(ix_pass)) {
-    warning( sprintf(
-        "Request pass/fail ratio (%d) exeeds the data (%d) using full set\n",
+    cat( sprintf(
+        "Request pass/fail ratio (%d) exeeds the data (%d) using full set (minus training)\n",
         floor(pass_fail_ratio_score), floor(length(ix_pass) / nFails) ))
 } else {
     ix_pass <- sample( ix_pass, n_pass_size )

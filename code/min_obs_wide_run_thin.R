@@ -11,16 +11,18 @@ tcheck.print = TRUE
 tcheck(0)
 
 
-# This step creates the models for each chunk and runs a test on the same chunk (results)
 ##########################
 ## parameters
 # ichunk contolled in for loops
-if(! exists("pass_fail_ratio")) pass_fail_ratio <- 200
+if(! exists("pass_fail_ratio")) pass_fail_ratio <- 50
 if(! exists("input_csv")) input_csv <- '../input/train_numeric.csv'
+if(! exists("seed"))seed <- 1912
 ##########################
 cat("pass_fail_ratio for train =", pass_fail_ratio, "\n")
 cat("training input =", input_csv, "\n")
 
+# This step creates the models for each chunk and runs a test on the same chunk (results)
+##
 results <- list()
 for (ichunk in 1:10) {
     source('min_obs_wide_study.R')

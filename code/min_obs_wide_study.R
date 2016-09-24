@@ -17,6 +17,7 @@ source('bosch_plp_util.R')
 if(! exists("pass_fail_ratio")) pass_fail_ratio <- 5
 if(! exists("ichunk")) ichunk <- 1
 if(! exists("input_csv")) input_csv <- '../input/train_numeric.csv'
+if(! exists("seed"))seed <- 1912
 
 trnw <- read_raw_chunk(ichunk, input= input_csv)
 
@@ -53,7 +54,7 @@ rm(id_cnt)
 
 ix_fail <- which(trnw$Response == '1')
 nFails <- length(ix_fail)
-set.seed(1912)
+set.seed(seed)
 ix_hold_fail <- sample( ix_fail, floor( nFails * .20 ))  # 20% holdout for testing
 ix_trn_fail <- setdiff( ix_fail, ix_hold_fail)
 
