@@ -57,73 +57,70 @@ rm(id_cnt)
 ix_fail <- which(trnw$Response == '1')
 nFails <- length(ix_fail)
 set.seed(seed)
-ix_hold_fail <- sample( ix_fail, floor( nFails * .20 ))  # 20% holdout for testing
-### ix_trn_fail <- setdiff( ix_fail, ix_hold_fail)
-
-#reconstruct the list of passes used for training (assumes seed and pass_fail_ratio have not changed)
-ix_pass <- sample( which(trnw$Response == '0'), min(nFails * pass_fail_ratio, sum(trnw$Response == '0')) )
-ix_hold_pass <- sample( ix_pass, floor(length(ix_pass) * .20 ))  # 20% holdout for testing
-ix_trn_pass <- setdiff( ix_pass, ix_hold_pass)
-ix_oos_pass <- setdiff( which(trnw$Response == '0'), ix_trn_pass)
 
 #shrink the number of passes to choose from
 n_pass_size <- nFails * pass_fail_ratio_score
-ix_pass <- ix_oos_pass
+ix_pass <- setdiff(1:nrow(trnw), ix_fail)
 if (n_pass_size > length(ix_pass)) {
     cat( sprintf(
-        "Request pass/fail ratio (%d) exeeds the data (%d) using full set (minus training)\n",
+        "Request pass/fail ratio (%d) exeeds the data (%d) using full set\n",
         floor(pass_fail_ratio_score), floor(length(ix_pass) / nFails) ))
 } else {
     ix_pass <- sample( ix_pass, n_pass_size )
 }
-ix_hold_pass <- sample( ix_pass, floor(length(ix_pass) * .20 ))  # 20% holdout for testing
-### ix_trn_pass <- setdiff( ix_pass, ix_hold_pass)
 
 # create datasets
-trn_hold <- trnw[ c(ix_hold_fail, ix_hold_pass) ] %>% sample_frac()
+trnw <- trnw[ c(ix_fail, ix_pass) ] %>% sample_frac()
 
 xresults <- data.frame()  # summarized results
 obs_results <- data.table()
-obs_stack <- trn_hold[, .(Id, Response)]
+obs_stack <- trnw[, .(Id, Response)]
 reslen <- 7  # this should match the length of chunk_results in min_obs_wide_study.R
 for (imodel in 1:10) {
-    
-    model_cols <- results[[ (imodel - 1) * reslen + 6 ]]
-    par.orig <- par(mfrow=c(1,2))
-    model <- results[[imodel * reslen]]
-    probs <- predict( model, dropNA(as.matrix(trn_hold[, .SD, .SDcols = model_cols ]) ))
-    preds <- prediction( probs, trn_hold$Response ) #ROCR
-    perf <- performance(preds, "tpr", "fpr")
-    plot(perf)
-    mcc <- performance( preds, "mat")
-    mcc_vals <- unlist( attr(mcc, "y.values"))
-    mcc_cuts <- unlist( attr(mcc, "x.values"))
-    cutoff <- mcc_cuts[ which.max(mcc_vals)]
-    yhat <- as.integer( probs >= cutoff)
-    
+    if (imodel == ichunk) {
+        na_tmp <- rep(NA, nrow(trnw))
+        answers <- data.frame( probs= na_tmp, yhat= na_tmp  )
+        mcc_best <- cutoff <- NA
+    } else {
+        model_cols <- results[[ (imodel - 1) * reslen + 6 ]]
+        par.orig <- par(mfrow=c(1,2))
+        model <- results[[imodel * reslen]]
+        probs <- predict( model, dropNA(as.matrix(trnw[, .SD, .SDcols = model_cols ]) ))
+        obs_results <- rbind( 
+            obs_results, trnw[, .(
+                imodel, Id, probs, Response
+            )])
+        
+        preds <- prediction( probs, trnw$Response ) #ROCR
+        perf <- performance(preds, "tpr", "fpr")
+        plot(perf)
+        mcc <- performance( preds, "mat")
+        mcc_vals <- unlist( attr(mcc, "y.values"))
+        mcc_cuts <- unlist( attr(mcc, "x.values"))
+        cutoff <- mcc_cuts[ which.max(mcc_vals)]
+        mcc_best <- max(mcc_vals, na.rm=TRUE )
+            
+        xresults <- rbind(
+            xresults, data.frame( imodel=imodel, ichunk=ichunk,
+                                  MCC=mcc_best, cutoff=cutoff))
+
+        plot(mcc_cuts, mcc_vals, type='l')
+        abline(v=cutoff)
+        par(par.orig)
+        title(sprintf("ROC & MCC for model %d using chunk %d", imodel, ichunk))
+        
+        yhat <- as.integer( probs >= cutoff)
+        answers <- data.frame( probs, yhat)
+    }
     # add results as columns
-    answers <- data.frame( probs, yhat)
     names(answers) <- c( paste0('p',imodel), paste0('yhat',imodel))
     obs_stack <- cbind( obs_stack, answers)
     rm(answers)
     
-    plot(mcc_cuts, mcc_vals, type='l')
-    abline(v=cutoff)
-    par(par.orig)
-    title(sprintf("ROC & MCC for model %d using chunk %d", imodel, ichunk))
-    
-    mcc_best <- max(mcc_vals, na.rm=TRUE )
-    
     #print( table( trn_hold$Response, ifelse(probs > cutoff, 1, 0) ))
-    cat( sprintf( "max MCC @ %4.2f = %f\n", cutoff, mcc_best ))
+    tcheck( desc = sprintf( "max MCC @ %4.2f = %f  (chunk,model = %d,%d)",
+                  cutoff, mcc_best, ichunk, imodel ))
     
-    obs_results <- rbind( 
-        obs_results, trn_hold[, .(
-            imodel, Id, probs, Response
-        )])
-    
-    xresults <- rbind(
-        xresults, data.frame( imodel=imodel, ichunk=ichunk, MCC=mcc_best, cutoff=cutoff))
 }
 # xgb_imp <- xgb.importance( trn_cols, model=model )
 # xgb_plot <- xgb_imp %>% arrange(desc(Gain)) %>% dplyr::slice(1:30) %>% ggplot( aes(reorder(Feature,Gain), Gain)) + geom_bar(stat="identity", position='identity') + coord_flip()
