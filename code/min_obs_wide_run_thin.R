@@ -14,7 +14,7 @@ tcheck(0)
 ##########################
 ## parameters
 # ichunk contolled in for loops
-if(! exists("pass_fail_ratio")) pass_fail_ratio <- 50
+if(! exists("pass_fail_ratio")) pass_fail_ratio <- 75
 if(! exists("input_csv")) input_csv <- '../input/train_numeric.csv'
 if(! exists("seed"))seed <- 1912
 ##########################
@@ -64,6 +64,7 @@ for (ichunk in 1:10) {
     xresults_all <-rbind(xresults_all, xresults)
     ratios <- c( ratios, floor(length(ix_pass) / nFails) )
     ens_results_all <- rbind(ens_results_all, ens_results[, chunk := ichunk])
+    obs_stack[, chunk := ichunk]
     obs_stack_all <- rbind(obs_stack_all, obs_stack)
 }
 saveRDS(xresults_all, file='../data/min_obs_thin_xrun_meta.rds')
@@ -95,17 +96,21 @@ xgb_ens_params <- list(
     #     subsample = 0.5,
     #     colsample_bytree = 0.5, 
     eval_metric = "logloss", #mlogloss",  #map@3",
-    objective = "binary:logistic",
+    objective = "binary:logistic"
     #nthreads = 4,
-    verbose = 1
 )
-xgb_nrounds = 70
+xgb_nrounds = 250
 
 obs_stack_all$Response <- as.integer(obs_stack_all$Response) #precautionary
-xgb.train <- xgb.DMatrix( dropNA(as.matrix(obs_stack_all)[-ix_hold, ens_cols]), label = obs_stack_all[-ix_hold, Response], missing = 99 )
-model_m2 <- xgboost( xgb.train,
-                  nrounds = xgb_nrounds,
-                  params = xgb_ens_params, verbose = 1 )
+xgb_trn <- xgb.DMatrix( dropNA(as.matrix(obs_stack_all)[-ix_hold, ens_cols]), label = obs_stack_all[-ix_hold, Response], missing = 99 )
+xgb_oos <- xgb.DMatrix( dropNA(as.matrix(obs_stack_all)[ix_hold, ens_cols]), label = obs_stack_all[ix_hold, Response], missing = 99 )
+model_m2 <- xgb.train( params = xgb_ens_params, 
+                     data = xgb_trn,
+                     nrounds = xgb_nrounds,
+                     watchlist = list( eval=xgb_oos),
+                     early.stop.round = 5L,
+                     print.every.n = 5L,
+                     verbose = 1 )
 probs <- predict( model_m2, dropNA(as.matrix(obs_stack_all)[ix_hold, ens_cols]) )
 cutoff_m2 <- find_cutoff_by_ratio( probs, 1/171)
 mcc_m2 <- calc_mcc( table( obs_stack_all[ix_hold, Response], as.integer(probs >= cutoff_m2)) )
@@ -124,13 +129,14 @@ for (ichunk in 1:10) {
     source('min_obs_wide_study_submit.R')
     ens_results_tst <- rbind(ens_results_tst, ens_results[, chunk := ichunk]); tcheck(desc=paste0('predict on test chunk', ichunk))
     guess0 <- c( guess0, missing_date_ids)
+    obs_stack[, chunk := ichunk]
     obs_stack_tst <- rbind(obs_stack_tst, obs_stack)
 }
 ens_results_tst <- rbind(ens_results_tst, data.table( Id=guess0, mean_prob=0, prob_pred=0, chunk=0))
 
 date_stamp <- format(Sys.time(), "%Y_%m_%d_%H%M%S")
 saveRDS(ens_results_tst, file= sprintf('../data/min_obs_thin_submit_m1_%s.rds', date_stamp))
-saveRDS(obs_stack_tst,   file= sprintf('../data/min_obs_thin_submit_m2_%s.rds', date_stamp))
+saveRDS(obs_stack_tst,  file= sprintf('../data/min_obs_thin_submit_m2_%s.rds', date_stamp))
 sfile <- sprintf("../submissions/min_obs_thin_%s.csv", date_stamp)
 write.csv( ens_results_tst %>% select(Id, Response=prob_pred), file=sfile, row.names = FALSE)
 
