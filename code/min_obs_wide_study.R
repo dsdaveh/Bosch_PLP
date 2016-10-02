@@ -79,9 +79,8 @@ xgb_params <- list(
     eval_metric = "logloss", #mlogloss",  #map@3",
     objective = "binary:logistic",
     # num_class = 12,
-    nthreads = 4,
+    nthreads = 4
     # maximize = TRUE
-    verbose = 1
 )
 xgb_nrounds = 500
 
@@ -90,7 +89,7 @@ trn_cols2 <- setdiff(trn_cols, names(na_cols))
 xgb.train <- xgb.DMatrix( dropNA(as.matrix(trnw[, .SD, .SDcols = trn_cols2])), label = trnw$Response, missing = 99 )
 model <- xgboost( xgb.train,
                   nrounds = xgb_nrounds,
-                  params = xgb_params, verbose = 1 )
+                  params = xgb_params, verbose = 0 )
 probs <- predict( model, dropNA(as.matrix(trn_hold[, .SD, .SDcols = trn_cols2]) ) )
 preds <- prediction( probs, trn_hold$Response )
 perf <- performance(preds, "tpr", "fpr")
