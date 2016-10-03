@@ -188,4 +188,6 @@ sum(trnw.f2[, Response]) # 1310
 dim(trnw.f2) #  240638    626
 object.size(trnw.f2) /1e9 # 1.19 GB
 
+nrow(trnw.f2) / sum(trnw.f2[, Response]) # pass:fail = 184:1
+
 
