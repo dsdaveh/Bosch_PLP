@@ -7,7 +7,7 @@ library(dplyr)
 source('bosch_plp_util.R')
 
 ##############  
-input_csv <- '../input/test_numeric.csv'
+input_csv <- '../input/train_numeric.csv'
 col_names <- fread(input_csv, nrows=0L) %>% names()
 f1_col <- col_names[ grepl("L0_S0", col_names)][1]
 f2_col <- col_names[ grepl("L0_S12", col_names)][1]
@@ -31,7 +31,7 @@ na_cols <- lapply(trnw.f2, function(x) all(is.na(x)))
 na_col_names <- names(trnw.f2)[which( unlist(na_cols))]
 trnw.f2[, (na_col_names) := NULL]
 
-dim(trnw.f2) # 242415  891
+dim(trnw.f2) # 242061    892
 object.size(trnw.f2) /1e9 # 1.71 GB
 sum(trnw.f2[, Response]) # 1323
 
@@ -60,16 +60,15 @@ na_cols <- lapply(trnw.f2, function(x) all(is.na(x)))
 na_col_names <- names(trnw.f2)[which( unlist(na_cols))]
 trnw.f2[, (na_col_names) := NULL]
 
+dim(trnw.f2) #  240976    668
+object.size(trnw.f2) /1e9 # 1.27 GB
+
 # there are no measurement cols that have all constant values (no NA's and sd=0)
 # no_sd <- lapply(trnw.f2, sd, na.rm = TRUE)
 # no_na <- lapply(trnw.f2, function(x) ! any(is.na(x)))
 # no_sd_names <- names(no_sd)[which( unlist(no_sd == 0))]
 # no_na_names <- names(no_na)[which( unlist(no_na))]
 # intersect(no_sd_names, no_na_names)
-
-dim(trnw.f2) #  241399    668
-object.size(trnw.f2) /1e9 # 1.27 GB
-
 
 purify_station_data_2 <- function( dt, Sa, Sb) {
     Sac <- names(dt)[ grepl(Sa, names(dt)) ]; length(Sac)  
