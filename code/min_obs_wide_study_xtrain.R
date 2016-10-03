@@ -86,6 +86,8 @@ for (ioos in start_oos:n_oos) {
     
     # create datasets
     trn_hold <- trnw[ c(ix_hold_fail, ix_hold_pass) ] %>% sample_frac()
+    xgb_oos <- xgb.DMatrix( dropNA(as.matrix(trn_hold[, .SD, .SDcols = trn_cols2])), label = trn_hold$Response, missing = 99 )
+
     trnw <- trnw[ c(ix_trn_fail, ix_trn_pass) ] %>% sample_frac()
     
     trn_cols <- setdiff( names(trnw), c("Id", "Response"))
@@ -99,19 +101,20 @@ for (ioos in start_oos:n_oos) {
         #     colsample_bytree = 0.5, 
         eval_metric = "logloss", #mlogloss",  #map@3",
         objective = "binary:logistic",
-        # num_class = 12,
-        nthreads = 4,
-        # maximize = TRUE
-        verbose = 0
+        nthreads = 4
     )
     xgb_nrounds = 500
     
     na_cols = which( lapply(trnw, function(x) all(is.na(x))) == TRUE )
     trn_cols2 <- setdiff(trn_cols, names(na_cols))
-    xgb.train <- xgb.DMatrix( dropNA(as.matrix(trnw[, .SD, .SDcols = trn_cols2])), label = trnw$Response, missing = 99 )
-    model <- xgboost( xgb.train,
-                      nrounds = xgb_nrounds,
-                      params = xgb_params, verbose = 0 )
+    xgb_trn <- xgb.DMatrix( dropNA(as.matrix(trnw[, .SD, .SDcols = trn_cols2])), label = trnw$Response, missing = 99 )
+    model <- xgb.train( params = xgb_params, 
+                        data=xgb_trn,
+                        nrounds = xgb_nrounds,
+                        watchlist = list(eval = xgb_oos),
+                        print.every.n = 5L,
+                        early.stop.round = 5L,
+                        verbose = 1 )
     probs <- predict( model, dropNA(as.matrix(trn_hold[, .SD, .SDcols = trn_cols2]) ) )
     preds <- prediction( probs, trn_hold$Response )
     perf <- performance(preds, "tpr", "fpr")
