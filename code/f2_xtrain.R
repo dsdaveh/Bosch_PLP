@@ -1,0 +1,144 @@
+# based of min_obs_wide_study.R
+# old: minimal observation with wide dataset
+# old: Try a wide dataset with all the failure observations and N:1 random pass:fail observations
+# new: repeat using unused pass data
+if (! grepl('\\/code$', getwd())) setwd('code')
+stopifnot (grepl('\\/code$', getwd()))
+
+library(data.table)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(xgboost)
+library(ROCR)
+library(recommenderlab)
+
+source('bosch_plp_util.R')
+
+if(! exists("pass_fail_ratio")) pass_fail_ratio <- 50
+if(! exists("ichunk")) ichunk <- 1
+if(! exists("input_csv")) input_csv <- '../input/train_numeric.csv'
+if(! exists("seed"))seed <- 1912
+
+source("f2_family_data_prep.R")
+
+n_oos <- floor( 171 / pass_fail_ratio)  
+if(! exists("start_oos")) start_oos <- 1    #assume first model is build and stored as .rds somewhere?
+
+trnw <- trnw.f2
+
+# number of na's os a feature (might be the only feature for some categorical observations)
+trnw$na_count <- apply(trnw, 1, function(x) sum(is.na(x))) 
+setkey(trnw, Id)
+
+trnl_date <- data.table()
+for (i in 1:10) {
+    trnl_date <- rbind(
+        trnl_date,
+        readRDS(file = sprintf("../data/train_date_long_chunk_%d.rds", i)) ) # see 'load_date_long.R'
+    setkey(trnl_date, Id)
+    trnl_date <- trnl_date[ Id %in% trnw$Id ] ; gc()
+}
+tcheck( desc = 'loaded date dataset (long)')
+
+## stolen from date eda
+id_cnt <- trnl_date[
+    , station := str_extract(metric, "S\\d+")][               #extract station ID
+        , .(station_metric_count=.N,
+            time_in = min(value), time_out = max(value)), by=c("Id", "station")][     #rollup by station
+                , .(station_count = .N, metric_count = sum(station_metric_count),
+                    min_time = min(time_in), max_time = max(time_out)), by=Id ][  #rollup by Id
+                        , proc_time := max_time - min_time]
+rm(trnl_date); gc()
+setkey(id_cnt, Id)
+
+trnw <- trnw[ id_cnt, nomatch=FALSE]
+rm(id_cnt); gc()
+
+# build a hold out data set -- consistent for each round
+ix_fail <- which(trnw$Response == '1')
+ix_pass_all <- which(trnw$Response == '0')
+pass_fail_dist <- length(ix_pass_all) / length(ix_fail)
+nFails <- length(ix_fail)
+set.seed(seed)
+ix_hold_fail <- sample( ix_fail, floor( nFails * .20 ))  # 20% holdout for testing
+ix_hold_pass <- sample( ix_pass_all, length(ix_hold_fail) * pass_fail_ratio)
+trn_hold <- trnw[ c(ix_hold_fail, ix_hold_pass) ] %>% sample_frac()
+xgb_oos <- xgb.DMatrix( dropNA(as.matrix(trn_hold[, .SD, .SDcols = trn_cols2])), label = trn_hold$Response, missing = 99 )
+
+#build pool for training data
+ix_trn_fail <- setdiff( ix_fail, ix_hold_fail)
+n_trn_pass <- length(ix_trn_fail) * pass_fail_ratio  # we'll sample this many passes each round
+ix_pass_oos <- setdiff( ix_pass_all, ix_hold_pass )
+
+trnw_fresh <- trnw   #saves time of refresh_trnw if we have memory
+oos_chunk_results <- list()
+family_results <- trn_hold[, .(Id, Response)]
+
+for (ioos in start_oos:n_oos) {
+    trnw <- trnw_fresh
+    
+    #shrink the number of passes to choose from
+    ix_trn_pass <- sample( ix_pass_oos, min(n_trn_pass, length(ix_pass_oos)) )
+    ix_pass_oos <- setdiff(ix_pass_oos, ix_trn_pass)
+
+    trnw <- trnw[ c(ix_trn_fail, ix_trn_pass) ] %>% sample_frac()
+    trn_cols <- setdiff( names(trnw), c("Id", "Response"))
+    
+    xgb_params <- list( 
+        eta = 0.04,      #
+        #     max_depth = 6,   # 
+        #     gamma = 0.5,     # 
+        #     min_child_weight = 5, #
+        #     subsample = 0.5,
+        #     colsample_bytree = 0.5, 
+        eval_metric = "logloss", #mlogloss",  #map@3",
+        objective = "binary:logistic",
+        nthreads = 4
+    )
+    xgb_nrounds = 500
+    
+    na_cols = which( lapply(trnw, function(x) all(is.na(x))) == TRUE )
+    trn_cols2 <- setdiff(trn_cols, names(na_cols))
+    xgb_trn <- xgb.DMatrix( dropNA(as.matrix(trnw[, .SD, .SDcols = trn_cols2])), label = trnw$Response, missing = 99 )
+    model <- xgb.train( params = xgb_params, 
+                        data=xgb_trn,
+                        nrounds = xgb_nrounds,
+                        watchlist = list(eval = xgb_oos),
+                        print.every.n = 5L,
+                        early.stop.round = 10L,
+                        verbose = 1 )
+    probs <- predict( model, dropNA(as.matrix(trn_hold[, .SD, .SDcols = trn_cols2]) ) )
+    preds <- prediction( probs, trn_hold$Response )
+    perf <- performance(preds, "tpr", "fpr")
+    plot(perf)
+    table( ifelse(probs > .5, 1, 0), trn_hold$Response)
+    mcc <- performance( preds, "mat")
+    mcc_vals <- unlist( attr(mcc, "y.values"))
+    mcc_cuts <- unlist( attr(mcc, "x.values"))
+    cutoff_mcc <- mcc_cuts[ which.max(mcc_vals)]
+    plot(mcc_cuts, mcc_vals, type='l')
+    abline(v=cutoff_mcc)
+    title(paste("MMC versus cutoff for train set", ioos))
+    mcc_best <- max(mcc_vals, na.rm=TRUE )
+    cat( sprintf( "max MCC @ %4.2f = %f\n", cutoff_mcc, mcc_best ))
+    cutoff_ratio <- find_cutoff_by_ratio( probs, pass_fail_dist)
+    abline(v=cutoff_ratio, lty=2 )
+    
+    pred_mcc <- ifelse( probs >= cutoff_mcc, 1, 0)
+    pred_ratio <- ifelse( probs >= cutoff_ratio, 1, 0)
+    mcc_mcc <- calc_mcc( with(family_results, table(Response, pred_mcc)) )
+    mcc_ratio <- calc_mcc( with(family_results, table(Response, pred_ratio)) )
+    
+    family_results[, (paste0('prob_', ioos)) := probs ]
+    family_results[, (paste0('mcc_best_', ioos)) := pred_mcc ]
+    family_results[, (paste0('mcc_ratio_', ioos)) := pred_ratio ]
+    
+    xgb_imp <- xgb.importance( trn_cols, model=model )
+    xgb_plot <- xgb_imp %>% arrange(desc(Gain)) %>% dplyr::slice(1:30) %>% ggplot( aes(reorder(Feature,Gain), Gain)) + geom_bar(stat="identity", position='identity') + coord_flip()
+    
+    chunk_results <- list( model=ioos, MCC=mcc_best, cutoff=cutoff_mcc, xgb_imp=xgb_imp,
+                           plot_imp=xgb_plot, cols_used=trn_cols2, xgb=model)
+    oos_chunk_results[[ioos]] <- chunk_results  # TODO should write ioos in here as well but need to inform downstream code first
+    tcheck(desc= sprintf('trained chunk %d oos_model %d', ichunk, ioos))
+}
