@@ -3,6 +3,7 @@ stopifnot (grepl('\\/code$', getwd()))
 
 library(data.table)
 library(dplyr)
+library(tidyr)
 
 source('bosch_plp_util.R')
 
@@ -145,8 +146,11 @@ combine_stations_2 <- function( dt, Sa, Sb) {
     comb_names <- paste( 'C', Sa, Sb, 1:length(Sac), sep = '_')
     
     # trnw.f2[ix_Sa, (comb_names[i]) := Sac[i], with=FALSE ] #this doesn't work like I expect
-    for (i in 1:length(Sac)) dt[ix_Sa, (comb_names[i]) := dt[ix_Sa,(Sac[i]), with=FALSE] ]
-    for (i in 1:length(Sac)) dt[ix_Sb, (comb_names[i]) := dt[ix_Sb,(Sbc[i]), with=FALSE] ]
+    oha <- paste0('oh_', Sa)
+    ohb <- paste0('oh_', Sb)
+    dt[ , c(oha, ohb) := FALSE]
+    for (i in 1:length(Sac)) dt[ix_Sa, (comb_names[i]) := dt[ix_Sa,(Sac[i]), with=FALSE] ][ix_Sa, (oha) := TRUE]
+    for (i in 1:length(Sac)) dt[ix_Sb, (comb_names[i]) := dt[ix_Sb,(Sbc[i]), with=FALSE] ][ix_Sb, (ohb) := TRUE]
     dt[, c(Sac, Sbc) := NULL]
     return(dt)
 }
@@ -165,9 +169,13 @@ combine_stations_3 <- function( dt, Sa, Sb, Sc) {
     comb_names <- paste( 'C', Sa, Sb, Sc, 1:length(Sac), sep = '_')
     
     # trnw.f2[ix_Sa, (comb_names[i]) := Sac[i], with=FALSE ] #this doesn't work like I expect
-    for (i in 1:length(Sac)) dt[ix_Sa, (comb_names[i]) := dt[ix_Sa,(Sac[i]), with=FALSE] ]
-    for (i in 1:length(Sac)) dt[ix_Sb, (comb_names[i]) := dt[ix_Sb,(Sbc[i]), with=FALSE] ]
-    for (i in 1:length(Sac)) dt[ix_Sc, (comb_names[i]) := dt[ix_Sc,(Scc[i]), with=FALSE] ]
+    oha <- paste0('oh_', Sa)
+    ohb <- paste0('oh_', Sb)
+    ohc <- paste0('oh_', Sc)
+    dt[ , c(oha, ohb, ohc) := FALSE]
+    for (i in 1:length(Sac)) dt[ix_Sa, (comb_names[i]) := dt[ix_Sa,(Sac[i]), with=FALSE] ][ix_Sa, (oha) := TRUE]
+    for (i in 1:length(Sac)) dt[ix_Sb, (comb_names[i]) := dt[ix_Sb,(Sbc[i]), with=FALSE] ][ix_Sb, (ohb) := TRUE]
+    for (i in 1:length(Sac)) dt[ix_Sc, (comb_names[i]) := dt[ix_Sc,(Scc[i]), with=FALSE] ][ix_Sc, (ohc) := TRUE]
     dt[, c(Sac, Sbc, Scc) := NULL]
     return(dt)
 }
