@@ -20,7 +20,7 @@ source('bosch_plp_util.R')
 
 ## parameters
 if(! exists("ichunk")) ichunk <- 1
-if(! exists("input_csv")) test_csv <- '../input/test_numeric.csv'
+if(! exists("test_csv")) test_csv <- '../input/test_numeric.csv'
 ## 
 tstw <- read_raw_chunk(ichunk, input=test_csv)
 

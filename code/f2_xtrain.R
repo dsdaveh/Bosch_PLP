@@ -58,13 +58,14 @@ rm(id_cnt); gc()
 # build a hold out data set -- consistent for each round
 ix_fail <- which(trnw$Response == '1')
 ix_pass_all <- which(trnw$Response == '0')
-pass_fail_dist <- length(ix_pass_all) / length(ix_fail)
+pass_fail_train <- length(ix_pass_all) / length(ix_fail)
 nFails <- length(ix_fail)
 set.seed(seed)
 ix_hold_fail <- sample( ix_fail, floor( nFails * .20 ))  # 20% holdout for testing
-ix_hold_pass <- sample( ix_pass_all, length(ix_hold_fail) * pass_fail_ratio)
+ix_hold_pass <- sample( ix_pass_all, length(ix_hold_fail) * pass_fail_train)
 trn_hold <- trnw[ c(ix_hold_fail, ix_hold_pass) ] %>% sample_frac()
-xgb_oos <- xgb.DMatrix( dropNA(as.matrix(trn_hold[, .SD, .SDcols = trn_cols2])), label = trn_hold$Response, missing = 99 )
+trn_cols <- setdiff( names(trnw), c("Id", "Response"))
+xgb_oos <- xgb.DMatrix( dropNA(as.matrix(trn_hold[, .SD, .SDcols = trn_cols])), label = trn_hold$Response, missing = 99 )
 
 #build pool for training data
 ix_trn_fail <- setdiff( ix_fail, ix_hold_fail)
@@ -83,10 +84,9 @@ for (ioos in start_oos:n_oos) {
     ix_pass_oos <- setdiff(ix_pass_oos, ix_trn_pass)
 
     trnw <- trnw[ c(ix_trn_fail, ix_trn_pass) ] %>% sample_frac()
-    trn_cols <- setdiff( names(trnw), c("Id", "Response"))
     
     xgb_params <- list( 
-        eta = 0.04,      #
+        eta = 0.1,      #
         #     max_depth = 6,   # 
         #     gamma = 0.5,     # 
         #     min_child_weight = 5, #
@@ -99,8 +99,7 @@ for (ioos in start_oos:n_oos) {
     xgb_nrounds = 500
     
     na_cols = which( lapply(trnw, function(x) all(is.na(x))) == TRUE )
-    trn_cols2 <- setdiff(trn_cols, names(na_cols))
-    xgb_trn <- xgb.DMatrix( dropNA(as.matrix(trnw[, .SD, .SDcols = trn_cols2])), label = trnw$Response, missing = 99 )
+    xgb_trn <- xgb.DMatrix( dropNA(as.matrix(trnw[, .SD, .SDcols = trn_cols])), label = trnw$Response, missing = 99 )
     model <- xgb.train( params = xgb_params, 
                         data=xgb_trn,
                         nrounds = xgb_nrounds,
@@ -108,21 +107,22 @@ for (ioos in start_oos:n_oos) {
                         print.every.n = 5L,
                         early.stop.round = 10L,
                         verbose = 1 )
-    probs <- predict( model, dropNA(as.matrix(trn_hold[, .SD, .SDcols = trn_cols2]) ) )
+    probs <- predict( model, dropNA(as.matrix(trn_hold[, .SD, .SDcols = trn_cols]) ) )
     preds <- prediction( probs, trn_hold$Response )
     perf <- performance(preds, "tpr", "fpr")
     plot(perf)
-    table( ifelse(probs > .5, 1, 0), trn_hold$Response)
     mcc <- performance( preds, "mat")
     mcc_vals <- unlist( attr(mcc, "y.values"))
     mcc_cuts <- unlist( attr(mcc, "x.values"))
     cutoff_mcc <- mcc_cuts[ which.max(mcc_vals)]
+    table( ifelse(probs > cutoff_mcc, 1, 0), trn_hold$Response)
     plot(mcc_cuts, mcc_vals, type='l')
     abline(v=cutoff_mcc)
     title(paste("MMC versus cutoff for train set", ioos))
     mcc_best <- max(mcc_vals, na.rm=TRUE )
     cat( sprintf( "max MCC @ %4.2f = %f\n", cutoff_mcc, mcc_best ))
-    cutoff_ratio <- find_cutoff_by_ratio( probs, pass_fail_dist)
+    cutoff_ratio <- find_cutoff_by_ratio( probs, 1/pass_fail_train)
+    table( ifelse(probs > cutoff_ratio, 1, 0), trn_hold$Response)
     abline(v=cutoff_ratio, lty=2 )
     
     pred_mcc <- ifelse( probs >= cutoff_mcc, 1, 0)
@@ -138,7 +138,29 @@ for (ioos in start_oos:n_oos) {
     xgb_plot <- xgb_imp %>% arrange(desc(Gain)) %>% dplyr::slice(1:30) %>% ggplot( aes(reorder(Feature,Gain), Gain)) + geom_bar(stat="identity", position='identity') + coord_flip()
     
     chunk_results <- list( model=ioos, MCC=mcc_best, cutoff=cutoff_mcc, xgb_imp=xgb_imp,
-                           plot_imp=xgb_plot, cols_used=trn_cols2, xgb=model)
-    oos_chunk_results[[ioos]] <- chunk_results  # TODO should write ioos in here as well but need to inform downstream code first
+                           plot_imp=xgb_plot, cols_used=trn_cols, xgb=model)
+    oos_chunk_results[[ioos]] <- chunk_results  # 
     tcheck(desc= sprintf('trained chunk %d oos_model %d', ichunk, ioos))
 }
+
+saveRDS(family_results, file='../data/f2_xtrain_results.rds')  
+saveRDS(oos_chunk_results, file='../data/f2_xtrain_models.rds')
+
+oos_mcc <- numeric()
+oos_cut <- numeric()
+for (i in 1:length(oos_chunk_results)) {
+    oos_mcc[i] <- oos_chunk_results[[i]]$MCC
+    print(oos_chunk_results[[i]]$cutoff )
+    imp <- oos_chunk_results[[i]]$xgb_imp
+    print(head(imp, 5))
+    imp_oos <- imp[, .(Feature, Gain)]
+    setkey(imp_oos, Feature)
+    if( i == 1) {
+        imp_avg <- imp_oos
+    } else {
+        imp_avg <- imp_avg[imp_oos]
+    }
+}
+imp_avg <- imp_avg %>% mutate( avg_gain = (Gain + i.Gain + i.Gain.1) / 3 ) %>%
+    arrange( desc( avg_gain))
+print(head(imp_avg, 5))
