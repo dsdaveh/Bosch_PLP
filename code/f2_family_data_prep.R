@@ -4,6 +4,7 @@ stopifnot (grepl('\\/code$', getwd()))
 library(data.table)
 library(dplyr)
 library(tidyr)
+library(ggplot2)
 
 source('bosch_plp_util.R')
 
@@ -45,13 +46,12 @@ trnw.f2[, F23 := F2 & F3]
 trnw.f2[, pure := F1 + F2 + F3 == 1]
 trnw.f2[, F4 := F1 + F2 + F3 == 0 ]
 
-trnw.f2 %>% select( starts_with("F")) %>% 
-    gather( family, val ) %>% filter( val == TRUE ) %>%
-    ggplot( aes( family)) + geom_bar() + ggtitle ('Families in training_ data')
+trnw.f2.info <- trnw.f2 %>% select( starts_with("F")) %>% 
+    gather( family, val ) %>% filter( val == TRUE ) %>% data.frame()
 
-trnw.f2 %>% select( starts_with("F")) %>% 
-    gather( family, val ) %>% filter( val == TRUE ) %>%
-    count( family, sort = TRUE )
+trnw.f2.info %>%
+    ggplot( aes( family)) + geom_bar() + ggtitle ('Families in training_ data')
+trnw.f2.info %>% count( family, sort = TRUE )
 
 trnw.f2 <- trnw.f2[ F2 == TRUE & pure == TRUE ]
 sum(trnw.f2[, Response]) # 1312
@@ -193,7 +193,7 @@ trnw.f2 <- combine_stations_2( trnw.f2, 'L0_S18', 'L0_S19')
 trnw.f2 <- combine_stations_3( trnw.f2, 'L0_S21', 'L0_S22', 'L0_S23')
 
 sum(trnw.f2[, Response]) # 1310
-dim(trnw.f2) #  240638    626
+dim(trnw.f2) #  240638    635
 object.size(trnw.f2) /1e9 # 1.19 GB
 
 nrow(trnw.f2) / sum(trnw.f2[, Response]) # pass:fail = 184:1
