@@ -80,7 +80,7 @@ for (imodel in 1:10) {
     if (imodel == ichunk) {
         na_tmp <- rep(NA, nrow(trnw))
         answers <- data.frame( probs= na_tmp, yhat= na_tmp  )
-        mcc_best <- cutoff <- NA
+        auc_val <- mcc_best <- cutoff <- NA
     } else {
         model_cols <- results[[ (imodel - 1) * reslen + 6 ]]
         par.orig <- par(mfrow=c(1,2))
@@ -92,6 +92,7 @@ for (imodel in 1:10) {
             )])
         
         preds <- prediction( probs, trnw$Response ) #ROCR
+        auc_val <- performance(preds, "auc")@y.values[[1]]
         perf <- performance(preds, "tpr", "fpr")
         plot(perf)
         mcc <- performance( preds, "mat")
@@ -102,12 +103,12 @@ for (imodel in 1:10) {
             
         xresults <- rbind(
             xresults, data.frame( imodel=imodel, ichunk=ichunk,
-                                  MCC=mcc_best, cutoff=cutoff))
+                                  MCC=mcc_best, AUC=auc_val, cutoff=cutoff))
 
         plot(mcc_cuts, mcc_vals, type='l')
         abline(v=cutoff)
         par(par.orig)
-        title(sprintf("ROC & MCC for model %d using chunk %d", imodel, ichunk))
+        title(sprintf("ROC & MCC for model %d using chunk %d AUC=%f", imodel, ichunk, auc_val))
         
         yhat <- as.integer( probs >= cutoff)
         answers <- data.frame( probs, yhat)
@@ -118,8 +119,8 @@ for (imodel in 1:10) {
     rm(answers)
     
     #print( table( trn_hold$Response, ifelse(probs > cutoff, 1, 0) ))
-    tcheck( desc = sprintf( "max MCC @ %4.2f = %f  (chunk,model = %d,%d)",
-                  cutoff, mcc_best, ichunk, imodel ))
+    tcheck( desc = sprintf( "max MCC @ %4.2f = %f, AUC=%f (chunk,model = %d,%d)",
+                  cutoff, mcc_best, auc_val, ichunk, imodel ))
     
 }
 # xgb_imp <- xgb.importance( trn_cols, model=model )
@@ -130,11 +131,43 @@ for (imodel in 1:10) {
 # method 1 - mean probabilities
 # method 2 - stacking (happens one level up)
 
+# mean probabilty of all the (nchunk - 1) models by Id
 ens_results <- obs_results[, .(Response = min(Response),
                                mean_prob = mean(probs)), by=Id]
 
 #method1 cutoff finding ratio
 cutoff_m1 <- find_cutoff_by_ratio( ens_results$mean_prob, 1/171)
 ens_results$y_m1 <- as.integer( ens_results$mean_prob >= cutoff_m1 )
+
+#plots and evaluation
+par.orig <- par(mfrow=c(1,2))
+
+ens_preds <- with(ens_results, prediction( mean_prob, Response )) #ROCR
+ens_auc <- performance(ens_preds, "auc")@y.values[[1]]
+ens_perf <- performance(ens_preds, "tpr", "fpr")
+plot(ens_perf)
+mcc <- performance( ens_preds, "mat")
+mcc_vals <- mcc@y.values[[1]]
+mcc_cuts <- mcc@x.values[[1]]
+cutoff <- mcc_cuts[ which.max(mcc_vals)]
+mcc_best <- max(mcc_vals, na.rm=TRUE )
+cutoff_wmean <- with(xresults, weighted.mean(cutoff, AUC))
+plot(mcc_cuts, mcc_vals, type='n')
+rect( min(xresults$cutoff), -1, max(xresults$cutoff), 1, col='cyan', border="transparent")
+lines(mcc_cuts, mcc_vals, type='l')
+abline(v=cutoff)
+abline(v=cutoff_m1, lty=2)
+#abline(v=cutoff_wmean, lty=3)  # this is better, but I'm not using a weighted mean for the results yet
+abline(v=mean(xresults$cutoff), lty=3)
+legend("topright", c("Best MCC", "by_ratio", "mean", "MCC range"), 
+       lty=c(1,2,3,NA), pch=c(NA,NA,NA, 15), col=c(1,1,1, "cyan"))
+
+par(par.orig)
+title(sprintf("ROC & MCC for ensembled chunk %d results AUC=%f", ichunk, ens_auc))
+
+# barplot(xresults$AUC, ylim=c(0, ens_auc+.05))
+# abline(h=ens_auc, lty=2)
+# text(1,ens_auc, "m1 ensemble", pos=3)
+# title(sprintf('AUC for models on chunk %d', ichunk))
 
 tcheck(desc= sprintf('completed chunk %d', ichunk))

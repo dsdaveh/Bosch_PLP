@@ -14,7 +14,7 @@ tcheck(0)
 ##########################
 ## parameters
 # ichunk contolled in for loops
-if(! exists("pass_fail_ratio")) pass_fail_ratio <- 75
+if(! exists("pass_fail_ratio")) pass_fail_ratio <- 50
 if(! exists("input_csv")) input_csv <- '../input/train_numeric.csv'
 if(! exists("seed"))seed <- 1912
 ##########################
@@ -72,6 +72,7 @@ saveRDS(ens_results_all, file='../data/min_obs_thin_xrun_ensemble_m1.rds')
 saveRDS(obs_stack_all, file='../data/min_obs_thin_xrun_ensemble_stacked.rds')
 
 summary(xresults_all$MCC)
+summary(xresults_all$AUC)
 summary(xresults_all$cutoff)
 
 xresults_all <- xresults_all %>% mutate (mregion = ifelse( ichunk <= 3, "low", ifelse( ichunk >= 8, "high", "mid")))
@@ -82,6 +83,8 @@ xresults_all %>% mutate(ichunk=as.factor(ichunk)) %>%
 
 #score m1 ensemble
 mcc_m1 <- calc_mcc( with(ens_results_all, table(Response, y_m1)) )
+m1_preds <- with(ens_results_all, prediction( mean_prob, Response )) #ROCR
+auc_m1 <- performance(m1_preds, "auc")@y.values[[1]]
 
 #stacked ensemble (m2)
 ens_cols <- setdiff( names(obs_stack_all), c("Id", "Response"))
@@ -114,6 +117,8 @@ model_m2 <- xgb.train( params = xgb_ens_params,
 probs <- predict( model_m2, dropNA(as.matrix(obs_stack_all)[ix_hold, ens_cols]) )
 cutoff_m2 <- find_cutoff_by_ratio( probs, 1/171)
 mcc_m2 <- calc_mcc( table( obs_stack_all[ix_hold, Response], as.integer(probs >= cutoff_m2)) )
+m2_preds <- prediction( probs, obs_stack_all[ix_hold, Response] ) #ROCR
+auc_m2 <- performance(m2_preds, "auc")@y.values[[1]]
 
 # This step runs the models for each test chunk
 ##########################
@@ -154,5 +159,9 @@ mcc_m1
 mcc_m2
 summary(xresults_all$MCC)
 sd(xresults_all$MCC)
+auc_m1
+auc_m2
+summary(xresults_all$AUC)
+sd(xresults_all$AUC)
 
 tcheck(desc='Completed run')
