@@ -106,3 +106,11 @@ table(obs_stack$yhat_ratio, f2_baseline[f2_ix, Response])
 
 f2_baseline[f2_ix, Response := obs_stack$yhat_ratio ]
 write.csv(f2_baseline, '../submissions/f2_num50_a.csv', row.names = FALSE)
+
+#LB = 0.8249  ... let's try using the same number of positives
+cutoff_adj <- find_cutoff_by_count( obs_stack$p_mean, sum(f2_baseline$Response))
+yhat_adj  <- as.integer( obs_stack$p_mean >= cutoff_adj )
+
+f2_baseline[f2_ix, Response := yhat_adj ]
+write.csv(f2_baseline, '../submissions/f2_num50_b.csv', row.names = FALSE)
+

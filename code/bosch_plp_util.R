@@ -25,6 +25,15 @@ find_cutoff_by_ratio <- function( p, r=1) {
 }
 
 
+find_cutoff_by_count <- function( p, np=1) {
+    #p is a vector of probablilites
+    #np is the number of positives to return
+    cd <- data.frame(p) %>% count(p) %>% arrange(desc(p)) %>%
+        mutate( cum = cumsum(n) , n_dist = abs(np - cumsum(n)))
+    with(cd, p[which.min( n_dist) ])
+}
+
+
 if (! exists("tcheck.print")) tcheck.print = FALSE
 if (! exists("tcheck.df")) tcheck.df <- data.frame( stringsAsFactors = FALSE)
 tcheck.default_string <- function() sprintf( "t=%d", nrow(tcheck.df))
