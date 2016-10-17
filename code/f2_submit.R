@@ -26,7 +26,6 @@ rm(dt.f2)
 tstw$na_count <- apply(tstw, 1, function(x) sum(is.na(x))) 
 setkey(tstw, Id)
 
-xxxxxxxxxxxxx
 dt_date <- data.table()
 for (i in 1:10) {
     dt_date <- rbind(
@@ -62,7 +61,7 @@ for (i in 1:length(oos_chunk_results)) {
     model_cols <- oos_chunk_results[[i]]$cols_used  #NOTE: identical for all models
     model <- oos_chunk_results[[i]]$xgb
     mcc_cutoff[i] <-  oos_chunk_results[[i]]$cutoff
-    probs <- predict( model, dropNA(as.matrix(tstw[, .SD, .SDcols = model_cols ]) )); tcheck(desc=sprintf("run model%d", imodel))
+    probs <- predict( model, dropNA(as.matrix(tstw[, .SD, .SDcols = model_cols ]) )); tcheck(desc=sprintf("run model%d", i))
     cutoff <- find_cutoff_by_ratio( probs, 1/171)  #TODO Optimize this by chunk
     yhat <- as.integer( probs >= cutoff)
     

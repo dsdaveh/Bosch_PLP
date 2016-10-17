@@ -200,6 +200,7 @@ mcc_mean <- calc_mcc( table( family_results$Response, family_results$mean_probs 
 mcc_best
 mcc_ratio
 mcc_mean
+ens_auc
 
 rm(trnw, trnw_fresh, trnw.f2, trnw.f2.info)
 gc()
