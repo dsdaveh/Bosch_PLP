@@ -109,6 +109,7 @@ for (ioos in start_oos:n_oos) {
                         verbose = 1 )
     probs <- predict( model, dropNA(as.matrix(trn_hold[, .SD, .SDcols = trn_cols]) ) )
     preds <- prediction( probs, trn_hold$Response )
+    auc_val <- performance(preds, "auc")@y.values[[1]]
     perf <- performance(preds, "tpr", "fpr")
     plot(perf)
     mcc <- performance( preds, "mat")
@@ -120,7 +121,7 @@ for (ioos in start_oos:n_oos) {
     abline(v=cutoff_mcc)
     title(paste("MMC versus cutoff for train set", ioos))
     mcc_best <- max(mcc_vals, na.rm=TRUE )
-    cat( sprintf( "max MCC @ %4.2f = %f\n", cutoff_mcc, mcc_best ))
+    cat( sprintf( "max MCC @ %4.2f = %f, AUC = %f\n", cutoff_mcc, mcc_best, auc_val ))
     cutoff_ratio <- find_cutoff_by_ratio( probs, 1/pass_fail_train)
     table( ifelse(probs > cutoff_ratio, 1, 0), trn_hold$Response)
     abline(v=cutoff_ratio, lty=2 )
@@ -137,8 +138,8 @@ for (ioos in start_oos:n_oos) {
     xgb_imp <- xgb.importance( trn_cols, model=model )
     xgb_plot <- xgb_imp %>% arrange(desc(Gain)) %>% dplyr::slice(1:30) %>% ggplot( aes(reorder(Feature,Gain), Gain)) + geom_bar(stat="identity", position='identity') + coord_flip()
     
-    chunk_results <- list( model=ioos, MCC=mcc_best, cutoff=cutoff_mcc, xgb_imp=xgb_imp,
-                           plot_imp=xgb_plot, cols_used=trn_cols, xgb=model)
+    chunk_results <- list( model=ioos, MCC=mcc_best, cutoff=cutoff_mcc, AUC=auc_val, 
+                           xgb_imp=xgb_imp, plot_imp=xgb_plot, cols_used=trn_cols, xgb=model)
     oos_chunk_results[[ioos]] <- chunk_results  # 
     tcheck(desc= sprintf('trained chunk %d oos_model %d', ichunk, ioos))
 }
@@ -148,8 +149,12 @@ saveRDS(oos_chunk_results, file='../data/f2_xtrain_models.rds')
 
 oos_mcc <- numeric()
 oos_cut <- numeric()
+oos_auc <- numeric()
 for (i in 1:length(oos_chunk_results)) {
     oos_mcc[i] <- oos_chunk_results[[i]]$MCC
+    oos_cut[i] <- oos_chunk_results[[i]]$cutoff
+    oos_auc[i] <- oos_chunk_results[[i]]$AUC
+    
     print(oos_chunk_results[[i]]$cutoff )
     imp <- oos_chunk_results[[i]]$xgb_imp
     print(head(imp, 5))
@@ -164,3 +169,37 @@ for (i in 1:length(oos_chunk_results)) {
 imp_avg <- imp_avg %>% mutate( avg_gain = (Gain + i.Gain + i.Gain.1) / 3 ) %>%
     arrange( desc( avg_gain))
 print(head(imp_avg, 5))
+print(oos_mcc)
+print(oos_cut)
+print(oos_auc)
+
+family_results[, mean_probs := (prob_1 + prob_2 + prob_3) / 3] 
+ens_preds <- prediction( family_results$mean_probs, trn_hold$Response )
+ens_auc <- performance(ens_preds, "auc")@y.values[[1]]
+ens_perf <- performance(ens_preds, "tpr", "fpr")
+plot(ens_perf)
+mcc <- performance( ens_preds, "mat")
+mcc_vals <- mcc@y.values[[1]]
+mcc_cuts <- mcc@x.values[[1]]
+cutoff <- mcc_cuts[ which.max(mcc_vals)]
+mcc_best <- max(mcc_vals, na.rm=TRUE )
+plot(mcc_cuts, mcc_vals, type='n')
+rect( min(oos_cut), -1, max(oos_cut), 1, col='cyan', border="transparent")
+lines(mcc_cuts, mcc_vals, type='l')
+abline(v=cutoff)
+cutoff_ratio <- find_cutoff_by_ratio( family_results$mean_probs, 1/171)
+abline(v=cutoff_ratio, lty=2)
+#abline(v=cutoff_wmean, lty=3)  # this is better, but I'm not using a weighted mean for the results yet
+abline(v=mean(oos_cut), lty=3)
+legend("topright", c("Best MCC", "by_ratio", "mean", "MCC range"), 
+       lty=c(1,2,3,NA), pch=c(NA,NA,NA, 15), col=c(1,1,1, "cyan"))
+
+title(sprintf("MCC for mean probs AUC=%f", ens_auc))
+mcc_ratio <- calc_mcc( table( family_results$Response, family_results$mean_probs >= cutoff_ratio))
+mcc_mean <- calc_mcc( table( family_results$Response, family_results$mean_probs >= mean(oos_cut)))
+mcc_best
+mcc_ratio
+mcc_mean
+
+rm(trnw, trnw_fresh, trnw.f2, trnw.f2.info)
+gc()
