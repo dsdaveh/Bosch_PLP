@@ -21,6 +21,7 @@ source('bosch_plp_util.R')
 ## parameters
 if(! exists("ichunk")) ichunk <- 1
 if(! exists("test_csv")) test_csv <- '../input/test_numeric.csv'
+if(! exists("Faron_magic")) Faron_magic <- FALSE
 ## 
 tstw <- read_raw_chunk(ichunk, input=test_csv)
 
@@ -46,6 +47,13 @@ setkey(id_cnt, Id)
 all_ids <- tstw$Id
 tstw <- tstw[ id_cnt, nomatch=FALSE]
 rm(id_cnt)
+
+if (Faron_magic) {
+    magic <- readRDS(file = '../data/faron_magic4.rds')
+    setkey(magic, Id)
+    tstw <- tstw[ magic, nomatch=FALSE]
+    rm(magic)
+}
 
 missing_date_ids <- setdiff(all_ids, tstw$Id) 
 

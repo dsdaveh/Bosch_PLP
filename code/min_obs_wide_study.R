@@ -14,10 +14,11 @@ library(recommenderlab)
 
 source('bosch_plp_util.R')
 
-if(! exists("pass_fail_ratio")) pass_fail_ratio <- 5
+if(! exists("pass_fail_ratio")) pass_fail_ratio <- 50
 if(! exists("ichunk")) ichunk <- 1
 if(! exists("input_csv")) input_csv <- '../input/train_numeric.csv'
 if(! exists("seed"))seed <- 1912
+if(! exists("Faron_magic")) Faron_magic <- FALSE
 
 trnw <- read_raw_chunk(ichunk, input= input_csv)
 
@@ -47,6 +48,13 @@ setkey(id_cnt, Id)
 
 trnw <- trnw[ id_cnt, nomatch=FALSE]
 rm(id_cnt)
+
+if (Faron_magic) {
+    magic <- readRDS(file = '../data/faron_magic4.rds')
+    setkey(magic, Id)
+    trnw <- trnw[ magic, nomatch=FALSE]
+    rm(magic)
+}
 
 ## move this to eda
 # trnw_num %>% ggplot( aes(min_time, fill=as.factor(Response) ))+ geom_density( alpha=.5)

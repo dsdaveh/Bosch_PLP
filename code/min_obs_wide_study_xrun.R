@@ -24,6 +24,7 @@ if(! exists("pass_fail_ratio_score")) pass_fail_ratio_score <- 200
 if(! exists("ichunk")) ichunk <- 1
 if(! exists("input_csv")) input_csv <- '../input/train_numeric.csv'
 if(! exists("seed"))seed <- 1912
+if(! exists("Faron_magic")) Faron_magic <- FALSE
 ## 
 trnw <- read_raw_chunk(ichunk, input=input_csv )
 
@@ -53,6 +54,13 @@ setkey(id_cnt, Id)
 
 trnw <- trnw[ id_cnt, nomatch=FALSE]
 rm(id_cnt)
+
+if (Faron_magic) {
+    magic <- readRDS(file = '../data/faron_magic4.rds')
+    setkey(magic, Id)
+    trnw <- trnw[ magic, nomatch=FALSE]
+    rm(magic)
+}
 
 ix_fail <- which(trnw$Response == '1')
 nFails <- length(ix_fail)
@@ -140,6 +148,7 @@ cutoff_m1 <- find_cutoff_by_ratio( ens_results$mean_prob, 1/171)
 ens_results$y_m1 <- as.integer( ens_results$mean_prob >= cutoff_m1 )
 
 #plots and evaluation
+par(mfrow=c(1,1))
 par.orig <- par(mfrow=c(1,2))
 
 ens_preds <- with(ens_results, prediction( mean_prob, Response )) #ROCR
@@ -159,7 +168,7 @@ abline(v=cutoff)
 abline(v=cutoff_m1, lty=2)
 #abline(v=cutoff_wmean, lty=3)  # this is better, but I'm not using a weighted mean for the results yet
 abline(v=mean(xresults$cutoff), lty=3)
-legend("topright", c("Best MCC", "by_ratio", "mean", "MCC range"), 
+legend("bottomright", c("Best MCC", "by_ratio", "mean", "MCC range"), 
        lty=c(1,2,3,NA), pch=c(NA,NA,NA, 15), col=c(1,1,1, "cyan"))
 
 par(par.orig)
