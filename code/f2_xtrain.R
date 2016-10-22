@@ -22,7 +22,7 @@ if(! exists("seed"))seed <- 1912
 
 source("f2_family_data_prep.R")
 
-n_oos <- floor( 171 / pass_fail_ratio)  
+n_oos <- floor( family_pf_ratio / pass_fail_ratio)  
 if(! exists("start_oos")) start_oos <- 1    #assume first model is build and stored as .rds somewhere?
 
 trnw <- trnw.f2
@@ -55,93 +55,93 @@ setkey(id_cnt, Id)
 trnw <- trnw[ id_cnt, nomatch=FALSE]
 rm(id_cnt); gc()
 
-# build a hold out data set -- consistent for each round
-ix_fail <- which(trnw$Response == '1')
-ix_pass_all <- which(trnw$Response == '0')
-pass_fail_train <- length(ix_pass_all) / length(ix_fail)
-nFails <- length(ix_fail)
+nfolds <- 5
 set.seed(seed)
-ix_hold_fail <- sample( ix_fail, floor( nFails * .20 ))  # 20% holdout for testing
-ix_hold_pass <- sample( ix_pass_all, length(ix_hold_fail) * pass_fail_train)
-trn_hold <- trnw[ c(ix_hold_fail, ix_hold_pass) ] %>% sample_frac()
-trn_cols <- setdiff( names(trnw), c("Id", "Response"))
-xgb_oos <- xgb.DMatrix( dropNA(as.matrix(trn_hold[, .SD, .SDcols = trn_cols])), label = trn_hold$Response, missing = 99 )
+ix_fold <- rep( 1L:5L, 1 + nrow(trnw) / 5) %>% head(nrow(trnw)) %>% sample(nrow(trnw))
 
-#build pool for training data
-ix_trn_fail <- setdiff( ix_fail, ix_hold_fail)
-n_trn_pass <- length(ix_trn_fail) * pass_fail_ratio  # we'll sample this many passes each round
-ix_pass_oos <- setdiff( ix_pass_all, ix_hold_pass )
+# build a hold out data set -- consistent for each round
+pass_fail_train <- nrow(trnw) / sum(trnw$Response)
 
-trnw_fresh <- trnw   #saves time of refresh_trnw if we have memory
 oos_chunk_results <- list()
-family_results <- trn_hold[, .(Id, Response)]
-
-for (ioos in start_oos:n_oos) {
-    trnw <- trnw_fresh
+family_results <- data.table()
+for(kfold in 1:nfolds) {
+    k_val <- trnw[ ix_fold == kfold ]
+    trn_cols <- setdiff( names(trnw), c("Id", "Response"))
+    kval_xgb <- xgb.DMatrix( dropNA(as.matrix(k_val[, .SD, .SDcols = trn_cols])), label = trn_k$Response, missing = 99 )
     
-    #shrink the number of passes to choose from
-    ix_trn_pass <- sample( ix_pass_oos, min(n_trn_pass, length(ix_pass_oos)) )
-    ix_pass_oos <- setdiff(ix_pass_oos, ix_trn_pass)
-
-    trnw <- trnw[ c(ix_trn_fail, ix_trn_pass) ] %>% sample_frac()
+    #build pool for training data
+    ix_trn_fail <- which(trnw[ ix_fold != kfold, Response] == '1')
+    ix_pass_pool <- which(trnw[ ix_fold != kfold, Response] == '0')
+    n_trn_pass <- length(ix_trn_fail) * pass_fail_ratio  # we'll sample this many passes each round
     
-    xgb_params <- list( 
-        eta = 0.1,      #
-        #     max_depth = 6,   # 
-        #     gamma = 0.5,     # 
-        #     min_child_weight = 5, #
-        #     subsample = 0.5,
-        #     colsample_bytree = 0.5, 
-        eval_metric = "logloss", #mlogloss",  #map@3",
-        objective = "binary:logistic",
-        nthreads = 4
-    )
-    xgb_nrounds = 500
+    fold_results <- k_val[, .(Id, Response)]
     
-    na_cols = which( lapply(trnw, function(x) all(is.na(x))) == TRUE )
-    xgb_trn <- xgb.DMatrix( dropNA(as.matrix(trnw[, .SD, .SDcols = trn_cols])), label = trnw$Response, missing = 99 )
-    model <- xgb.train( params = xgb_params, 
-                        data=xgb_trn,
-                        nrounds = xgb_nrounds,
-                        watchlist = list(eval = xgb_oos),
-                        print.every.n = 5L,
-                        early.stop.round = 10L,
-                        verbose = 1 )
-    probs <- predict( model, dropNA(as.matrix(trn_hold[, .SD, .SDcols = trn_cols]) ) )
-    preds <- prediction( probs, trn_hold$Response )
-    auc_val <- performance(preds, "auc")@y.values[[1]]
-    perf <- performance(preds, "tpr", "fpr")
-    plot(perf)
-    mcc <- performance( preds, "mat")
-    mcc_vals <- unlist( attr(mcc, "y.values"))
-    mcc_cuts <- unlist( attr(mcc, "x.values"))
-    cutoff_mcc <- mcc_cuts[ which.max(mcc_vals)]
-    table( ifelse(probs > cutoff_mcc, 1, 0), trn_hold$Response)
-    plot(mcc_cuts, mcc_vals, type='l')
-    abline(v=cutoff_mcc)
-    title(paste("MMC versus cutoff for train set", ioos))
-    mcc_best <- max(mcc_vals, na.rm=TRUE )
-    cat( sprintf( "max MCC @ %4.2f = %f, AUC = %f\n", cutoff_mcc, mcc_best, auc_val ))
-    cutoff_ratio <- find_cutoff_by_ratio( probs, 1/pass_fail_train)
-    table( ifelse(probs > cutoff_ratio, 1, 0), trn_hold$Response)
-    abline(v=cutoff_ratio, lty=2 )
-    
-    pred_mcc <- ifelse( probs >= cutoff_mcc, 1, 0)
-    pred_ratio <- ifelse( probs >= cutoff_ratio, 1, 0)
-    mcc_mcc <- calc_mcc( with(family_results, table(Response, pred_mcc)) )
-    mcc_ratio <- calc_mcc( with(family_results, table(Response, pred_ratio)) )
-    
-    family_results[, (paste0('prob_', ioos)) := probs ]
-    family_results[, (paste0('mcc_best_', ioos)) := pred_mcc ]
-    family_results[, (paste0('mcc_ratio_', ioos)) := pred_ratio ]
-    
-    xgb_imp <- xgb.importance( trn_cols, model=model )
-    xgb_plot <- xgb_imp %>% arrange(desc(Gain)) %>% dplyr::slice(1:30) %>% ggplot( aes(reorder(Feature,Gain), Gain)) + geom_bar(stat="identity", position='identity') + coord_flip()
-    
-    chunk_results <- list( model=ioos, MCC=mcc_best, cutoff=cutoff_mcc, AUC=auc_val, 
-                           xgb_imp=xgb_imp, plot_imp=xgb_plot, cols_used=trn_cols, xgb=model)
-    oos_chunk_results[[ioos]] <- chunk_results  # 
-    tcheck(desc= sprintf('trained chunk %d oos_model %d', ichunk, ioos))
+    for (ioos in start_oos:n_oos) {
+        
+        #shrink the number of passes to choose from
+        ix_trn_pass <- sample( ix_pass_pool, min(n_trn_pass, length(ix_pass_pool)) )
+        ix_pass_pool <- setdiff(ix_pass_pool, ix_trn_pass)
+        
+        k_trn <- trnw[ ix_fold != kfold ][c(ix_trn_fail, ix_trn_pass) ] %>% sample_frac()
+        
+        xgb_params <- list( 
+            eta = 0.1,      #
+            #     max_depth = 6,   # 
+            #     gamma = 0.5,     # 
+            #     min_child_weight = 5, #
+            #     subsample = 0.5,
+            #     colsample_bytree = 0.5, 
+            eval_metric = "logloss", #mlogloss",  #map@3",
+            objective = "binary:logistic",
+            nthreads = 4
+        )
+        xgb_nrounds = 500
+        
+        xgb_trn <- xgb.DMatrix( dropNA(as.matrix(k_trn[, .SD, .SDcols = trn_cols])), label = k_trn$Response, missing = 99 )
+        model <- xgb.train( params = xgb_params, 
+                            data=xgb_trn,
+                            nrounds = xgb_nrounds,
+                            watchlist = list(eval = kval_xgb),
+                            print.every.n = 5L,
+                            early.stop.round = 10L,
+                            verbose = 1 )
+        probs <- predict( model, dropNA(as.matrix(k_val[, .SD, .SDcols = trn_cols]) ) )
+        preds <- prediction( probs, k_val$Response )
+        auc_val <- performance(preds, "auc")@y.values[[1]]
+        perf <- performance(preds, "tpr", "fpr")
+        plot(perf)
+        mcc <- performance( preds, "mat")
+        mcc_vals <- unlist( attr(mcc, "y.values"))
+        mcc_cuts <- unlist( attr(mcc, "x.values"))
+        cutoff_mcc <- mcc_cuts[ which.max(mcc_vals)]
+        table( ifelse(probs > cutoff_mcc, 1, 0), k_val$Response)
+        plot(mcc_cuts, mcc_vals, type='l')
+        abline(v=cutoff_mcc)
+        title(paste("MMC versus cutoff for train set", ioos))
+        mcc_best <- max(mcc_vals, na.rm=TRUE )
+        cat( sprintf( "max MCC @ %4.2f = %f, AUC = %f\n", cutoff_mcc, mcc_best, auc_val ))
+        cutoff_ratio <- find_cutoff_by_ratio( probs, 1/pass_fail_train)
+        table( ifelse(probs > cutoff_ratio, 1, 0), k_val$Response)
+        abline(v=cutoff_ratio, lty=2 )
+        
+        pred_mcc <- ifelse( probs >= cutoff_mcc, 1, 0)
+        pred_ratio <- ifelse( probs >= cutoff_ratio, 1, 0)
+        mcc_mcc <- calc_mcc( with(fold_results, table(Response, pred_mcc)) )
+        mcc_ratio <- calc_mcc( with(fold_results, table(Response, pred_ratio)) )
+        
+        fold_results[, (paste0('prob_', ioos)) := probs ]
+        fold_results[, (paste0('mcc_best_', ioos)) := pred_mcc ]
+        fold_results[, (paste0('mcc_ratio_', ioos)) := pred_ratio ]
+        
+        xgb_imp <- xgb.importance( trn_cols, model=model )
+        xgb_plot <- xgb_imp %>% arrange(desc(Gain)) %>% dplyr::slice(1:30) %>% ggplot( aes(reorder(Feature,Gain), Gain)) + geom_bar(stat="identity", position='identity') + coord_flip()
+        
+        chunk_results <- list( model=ioos, MCC=mcc_best, cutoff=cutoff_mcc, AUC=auc_val, 
+                               xgb_imp=xgb_imp, plot_imp=xgb_plot, cols_used=trn_cols, xgb=model)
+        oos_chunk_results[[(kfold - 1) * n_oos + ioos]] <- chunk_results  # 
+        tcheck(desc= sprintf('trained k %d/5 oos_model %d', kfold, ioos))
+    }
+    family_results <- rbind(family_results, fold_results)
 }
 
 saveRDS(family_results, file='../data/f2_xtrain_results.rds')  
