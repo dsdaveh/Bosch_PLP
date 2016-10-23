@@ -55,23 +55,30 @@ setkey(id_cnt, Id)
 trnw <- trnw[ id_cnt, nomatch=FALSE]
 rm(id_cnt); gc()
 
+# Add Faron's magic
+trnw <- add_magic(trnw)
+
 nfolds <- 5
-set.seed(seed)
-ix_fold <- rep( 1L:5L, 1 + nrow(trnw) / 5) %>% head(nrow(trnw)) %>% sample(nrow(trnw))
+
+#create folds from sequential data
+ord_time <- order(trnw$min_time, trnw$Id)
+setkey(trnw, min_time)
+fold_size <- round((nrow(trnw) +  nfolds - 1) / nfolds)
+trnw$kfold <- rep(1:nfolds, each=fold_size)[1:nrow(trnw)]
 
 # build a hold out data set -- consistent for each round
-pass_fail_train <- nrow(trnw) / sum(trnw$Response)
+###del pass_fail_train <- nrow(trnw) / sum(trnw$Response)
 
 oos_chunk_results <- list()
 family_results <- data.table()
-for(kfold in 1:nfolds) {
-    k_val <- trnw[ ix_fold == kfold ]
-    trn_cols <- setdiff( names(trnw), c("Id", "Response"))
-    kval_xgb <- xgb.DMatrix( dropNA(as.matrix(k_val[, .SD, .SDcols = trn_cols])), label = trn_k$Response, missing = 99 )
+for(k in 1:nfolds) {
+    k_val <- trnw[ kfold == k ]
+    trn_cols <- setdiff( names(trnw), c("Id", "Response", "kfold"))
+    kval_xgb <- xgb.DMatrix( dropNA(as.matrix(k_val[, .SD, .SDcols = trn_cols])), label = k_val$Response, missing = 9999999 )
     
     #build pool for training data
-    ix_trn_fail <- which(trnw[ ix_fold != kfold, Response] == '1')
-    ix_pass_pool <- which(trnw[ ix_fold != kfold, Response] == '0')
+    ix_trn_fail <- which(trnw[ k != kfold, Response] == '1')
+    ix_pass_pool <- which(trnw[ k != kfold, Response] == '0')
     n_trn_pass <- length(ix_trn_fail) * pass_fail_ratio  # we'll sample this many passes each round
     
     fold_results <- k_val[, .(Id, Response)]
@@ -82,7 +89,7 @@ for(kfold in 1:nfolds) {
         ix_trn_pass <- sample( ix_pass_pool, min(n_trn_pass, length(ix_pass_pool)) )
         ix_pass_pool <- setdiff(ix_pass_pool, ix_trn_pass)
         
-        k_trn <- trnw[ ix_fold != kfold ][c(ix_trn_fail, ix_trn_pass) ] %>% sample_frac()
+        k_trn <- trnw[ k != kfold ][c(ix_trn_fail, ix_trn_pass) ] %>% sample_frac()
         
         xgb_params <- list( 
             eta = 0.1,      #
@@ -117,7 +124,7 @@ for(kfold in 1:nfolds) {
         table( ifelse(probs > cutoff_mcc, 1, 0), k_val$Response)
         plot(mcc_cuts, mcc_vals, type='l')
         abline(v=cutoff_mcc)
-        title(paste("MMC versus cutoff for train set", ioos))
+        title(sprintf("MMC versus cutoff for fold %d train set %d", k, ioos))
         mcc_best <- max(mcc_vals, na.rm=TRUE )
         cat( sprintf( "max MCC @ %4.2f = %f, AUC = %f\n", cutoff_mcc, mcc_best, auc_val ))
         cutoff_ratio <- find_cutoff_by_ratio( probs, 1/pass_fail_train)
@@ -126,7 +133,7 @@ for(kfold in 1:nfolds) {
         
         pred_mcc <- ifelse( probs >= cutoff_mcc, 1, 0)
         pred_ratio <- ifelse( probs >= cutoff_ratio, 1, 0)
-        mcc_mcc <- calc_mcc( with(fold_results, table(Response, pred_mcc)) )
+        mcc_mcc <- calc_mcc( with(fold_results, table(Response, pred_mcc)) ) # same as: max(mcc_vals, na.rm = T)
         mcc_ratio <- calc_mcc( with(fold_results, table(Response, pred_ratio)) )
         
         fold_results[, (paste0('prob_', ioos)) := probs ]
@@ -138,8 +145,8 @@ for(kfold in 1:nfolds) {
         
         chunk_results <- list( model=ioos, MCC=mcc_best, cutoff=cutoff_mcc, AUC=auc_val, 
                                xgb_imp=xgb_imp, plot_imp=xgb_plot, cols_used=trn_cols, xgb=model)
-        oos_chunk_results[[(kfold - 1) * n_oos + ioos]] <- chunk_results  # 
-        tcheck(desc= sprintf('trained k %d/5 oos_model %d', kfold, ioos))
+        oos_chunk_results[[(k - 1) * n_oos + ioos]] <- chunk_results  # 
+        tcheck(desc= sprintf('trained k %d/5 oos_model %d', k, ioos))
     }
     family_results <- rbind(family_results, fold_results)
 }
@@ -151,6 +158,8 @@ oos_mcc <- numeric()
 oos_cut <- numeric()
 oos_auc <- numeric()
 for (i in 1:length(oos_chunk_results)) {
+    ioos <- (i-1) %% n_oos + 1
+    k <- floor((i-1) / n_oos) + 1
     oos_mcc[i] <- oos_chunk_results[[i]]$MCC
     oos_cut[i] <- oos_chunk_results[[i]]$cutoff
     oos_auc[i] <- oos_chunk_results[[i]]$AUC
@@ -159,6 +168,7 @@ for (i in 1:length(oos_chunk_results)) {
     imp <- oos_chunk_results[[i]]$xgb_imp
     print(head(imp, 5))
     imp_oos <- imp[, .(Feature, Gain)]
+    names(imp_oos)[2] <- sprintf("Gain.k%d.ts%d", k, ioos)
     setkey(imp_oos, Feature)
     if( i == 1) {
         imp_avg <- imp_oos
@@ -166,15 +176,22 @@ for (i in 1:length(oos_chunk_results)) {
         imp_avg <- imp_avg[imp_oos]
     }
 }
-imp_avg <- imp_avg %>% mutate( avg_gain = (Gain + i.Gain + i.Gain.1) / 3 ) %>%
-    arrange( desc( avg_gain))
+imp_avg$avg_gain <- rowMeans(as.matrix( imp_avg[ , -1, with=F ]), na.rm=TRUE  )
 print(head(imp_avg, 5))
 print(oos_mcc)
 print(oos_cut)
 print(oos_auc)
+cv_results <- data.frame( MCC=oos_mcc, AUC=oos_auc, cutoff=oos_cut, run=1:(n_oos*nfolds),
+                          kfold = as.factor(rep(1:nfolds, each=n_oos)),
+                          ts =  rep(1:n_oos, nfolds) )
+cv_results %>% gather( result, value, MCC, AUC, cutoff) %>%
+    ggplot(aes(run, value)) + 
+    geom_line(aes(col=result)) +
+    geom_point(aes(shape=kfold), size=4) +
+    ggtitle('Results by fold and training set')
 
-family_results[, mean_probs := (prob_1 + prob_2 + prob_3) / 3] 
-ens_preds <- prediction( family_results$mean_probs, trn_hold$Response )
+family_results$mean_probs <- rowMeans( as.matrix( family_results %>% select(starts_with('prob'))))
+ens_preds <- prediction( family_results$mean_probs, family_results$Response )
 ens_auc <- performance(ens_preds, "auc")@y.values[[1]]
 ens_perf <- performance(ens_preds, "tpr", "fpr")
 plot(ens_perf)
@@ -191,7 +208,7 @@ cutoff_ratio <- find_cutoff_by_ratio( family_results$mean_probs, 1/171)
 abline(v=cutoff_ratio, lty=2)
 #abline(v=cutoff_wmean, lty=3)  # this is better, but I'm not using a weighted mean for the results yet
 abline(v=mean(oos_cut), lty=3)
-legend("topright", c("Best MCC", "by_ratio", "mean", "MCC range"), 
+legend("bottomright", c("Best MCC", "by_ratio", "mean", "MCC range"), 
        lty=c(1,2,3,NA), pch=c(NA,NA,NA, 15), col=c(1,1,1, "cyan"))
 
 title(sprintf("MCC for mean probs AUC=%f", ens_auc))

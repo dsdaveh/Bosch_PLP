@@ -3,6 +3,14 @@ library(data.table)
 
 EOL = "\n"
 
+add_magic <- function(dt) {
+    magic <- readRDS(file = '../data/faron_magic4.rds')
+    setkey(dt, Id)
+    setkey(magic, Id)
+    dt <- dt[ magic, nomatch=FALSE]
+    return(dt)
+}
+
 normalize <- function(x) (x - min(x)) / diff(range(x))
 
 calc_mcc <- function(v) {
