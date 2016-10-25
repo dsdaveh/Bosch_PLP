@@ -199,4 +199,37 @@ family_pf_ratio <- nrow(trnw.f2) / sum(trnw.f2$Response)
 # 
 # nrow(trnw.f2) / sum(trnw.f2[, Response]) # pass:fail = 184:1
 
+#eliminate duplicate columns
+rm_dup_cols <- function(dt, search_cols_prefix = 'L') {
+    check_dups <- dt %>% select(starts_with(search_cols_prefix)) %>% as.matrix() %>% t() %>% as.data.frame()
+    Lnames <- names(dt)[grepl('^L', names(dt))]
+    isDup <- duplicated(check_dups)
+    if (any(isDup)) {
+        dup_names <- Lnames[ which(isDup) ]
+        dt <- dt[ , -dup_names, with=FALSE ]
+    }
+    return(dt)
+}
+
+trnw.f2 <- rm_dup_cols(trnw.f2)
+dim(trnw.f2) #  240976    622
+object.size(trnw.f2) /1e9 # 1.19 GB
+tcheck(desc='built numerics data')
+
+##############  
+input_cat <- gsub('numeric', 'categorical', input_csv)
+col_names <- fread(input_cat, nrows=0L) %>% names()
+#################
+cat.f2 <- data.table()
+
+for (ichunk in 1:10) {
+    print(ichunk)
+    cat.chunk <- read_raw_chunk(ichunk, input= input_cat)
+    keep_ids <- intersect( cat.chunk$Id, trnw.f2$Id)
+    cat.f2 <- rbind(cat.f2, cat.chunk[keep_ids])
+    rm(cat.chunk)
+}
+setkey(cat.f2, Id)
+cat.f2 <- rm_dup_cols(cat.f2)
+
 
