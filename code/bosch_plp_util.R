@@ -18,7 +18,10 @@ calc_mcc <- function(v) {
     # this will yield values in the following order tn, fn, fp, tp
     v <- as.numeric(v) 
     tn <- v[1]; fn <- v[2]; fp <- v[3]; tp <- v[4]
-    (tp*tn - fp*fn) / sqrt((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))
+    denom <- (tp+fp)*(tp+fn)*(tn+fp)*(tn+fn)
+    mcc <- ifelse( denom == 0, 0,
+                   (tp*tn - fp*fn) / sqrt(denom))
+    return(mcc)
 }
 
 find_cutoff_by_ratio <- function( p, r=1) {
