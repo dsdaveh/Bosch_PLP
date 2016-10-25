@@ -58,22 +58,37 @@ rm(id_cnt); gc()
 # Add Faron's magic
 trnw <- add_magic(trnw)
 
+# reduce_cols <- imp_avg %>% arrange(desc(avg_gain)) %>% head(25) %>% .[[1]]
+# reduce cols from _nmc50 -> _nmc50r1
+reduce_cols <- c("magic4", "L3_S32_F3854", "magic3", "L3_S33_F3865", "proc_time",
+"L0_S12_F350", "L3_S30_F3704", "min_time", "max_time", "L3_S30_F3759", "L3_S33_F3857",
+"L3_S33_F3855", "L0_S12_F346", "L0_S13_F354", "L0_S13_F356",  "L3_S30_F3744", 
+"L3_S36_F3920", "L3_S33_F3859", "L0_S21_F497", "L0_S12_F330", "L3_S30_F3494",
+"L2_S27_F3166", "L0_S18_F439", "L0_S15_F397", "L3_S29_F3339")
+trnw <- trnw[, c('Id', 'Response', reduce_cols), with=F ]
+
+# remove duplicates
+chk_cols <- setdiff( names(trnw), c("Id", names(trnw)[grepl("magic", names(trnw))]))
+dup_rows <- duplicated(data.frame(trnw)[ ,chk_cols])
+trnw <- trnw[! dup_rows]
+
 nfolds <- 5
 
 #create folds from sequential data
 ord_time <- order(trnw$min_time, trnw$Id)
 setkey(trnw, min_time)
 fold_size <- round((nrow(trnw) +  nfolds - 1) / nfolds)
-trnw$kfold <- rep(1:nfolds, each=fold_size)[1:nrow(trnw)]
+#trnw$kfold <- rep(1:nfolds, each=fold_size)[1:nrow(trnw)]
+trnw$kfold <- rep(1:nfolds, fold_size)[1:nrow(trnw)]
+trn_cols <- setdiff( names(trnw), c("Id", "Response", "kfold"))
 
 # build a hold out data set -- consistent for each round
-###del pass_fail_train <- nrow(trnw) / sum(trnw$Response)
+pass_fail_train <- nrow(trnw) / sum(trnw$Response)
 
 oos_chunk_results <- list()
 family_results <- data.table()
 for(k in 1:nfolds) {
     k_val <- trnw[ kfold == k ]
-    trn_cols <- setdiff( names(trnw), c("Id", "Response", "kfold"))
     kval_xgb <- xgb.DMatrix( dropNA(as.matrix(k_val[, .SD, .SDcols = trn_cols])), label = k_val$Response, missing = 9999999 )
     
     #build pool for training data
@@ -177,7 +192,9 @@ for (i in 1:length(oos_chunk_results)) {
     }
 }
 imp_avg$avg_gain <- rowMeans(as.matrix( imp_avg[ , -1, with=F ]), na.rm=TRUE  )
-print(head(imp_avg, 5))
+imp_avg %>% arrange(desc(avg_gain)) %>% head(25)
+imp_avg %>% arrange(desc(avg_gain)) %>% dplyr::slice(1:30) %>% ggplot( aes(reorder(Feature,avg_gain), avg_gain)) + geom_bar(stat="identity", position='identity') + coord_flip()
+
 print(oos_mcc)
 print(oos_cut)
 print(oos_auc)
@@ -210,8 +227,8 @@ abline(v=cutoff_ratio, lty=2)
 abline(v=mean(oos_cut), lty=3)
 legend("bottomright", c("Best MCC", "by_ratio", "mean", "MCC range"), 
        lty=c(1,2,3,NA), pch=c(NA,NA,NA, 15), col=c(1,1,1, "cyan"))
-
 title(sprintf("MCC for mean probs AUC=%f", ens_auc))
+
 mcc_ratio <- calc_mcc( table( family_results$Response, family_results$mean_probs >= cutoff_ratio))
 mcc_mean <- calc_mcc( table( family_results$Response, family_results$mean_probs >= mean(oos_cut)))
 mcc_best
@@ -219,5 +236,5 @@ mcc_ratio
 mcc_mean
 ens_auc
 
-rm(trnw, trnw_fresh, trnw.f2, trnw.f2.info)
+#rm(trnw, trnw_fresh, trnw.f2, trnw.f2.info)
 gc()
