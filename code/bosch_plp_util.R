@@ -3,6 +3,56 @@ library(data.table)
 
 EOL = "\n"
 
+fea_ff <- function(dt, mag) {
+    frate <- dt[, .(Id, Response, min_time, tval = round(min_time * 100 / 10**mag, 0))]
+    frate[ , frate := sum(Response)/.N, tval]
+    return( frate$frate )
+}
+add_cv_feature <- function( dt, exclude_fold=0) {
+    #exclude_fold > 0 (1:nfolds) build features separately for train/validation
+    
+    #failure frequency features
+    ix <- dt$kfold != exclude_fold
+    fea <- dt[ix, .(Id, min_time)]
+    #fea$ff0 <- fea_ff(dt[ix], 0)
+    #fea$ff1 <- fea_ff(dt[ix], 1)
+    #fea$ff2 <- fea_ff(dt[ix], 2)
+    fea$ff3 <- fea_ff(dt[ix], 3)
+    fea$ff4 <- fea_ff(dt[ix], 4)
+    fea$ff5 <- fea_ff(dt[ix], 5)
+
+    if (exclude_fold != 0) {
+        ix2 <- dt$kfold == exclude_fold
+        mt_lkp <- fea[, .(#ff0 = max(ff0),
+                          #ff1 = max(ff1),
+                          #ff2 = max(ff2),
+                          ff3 = max(ff3),
+                          ff4 = max(ff4),
+                          ff5 = max(ff5)), min_time]
+        fea_val <- dt[ix2, .(Id, min_time)]
+        setkey(fea_val, min_time)
+        setkey(mt_lkp, min_time)
+        fea_val <- mt_lkp[fea_val]
+        
+        #fix rows where m_time did not match
+        ix_missing <- which( is.na(fea_val$ff3))
+        niter <- 1
+        while( length(ix_missing > 0)) {
+            ix_replace <- ifelse(ix_missing == 1, 1 + niter, ix_missing + 1)
+            id_orig <- fea_val[ix_missing, Id]
+            fea_val[ix_missing] <- fea_val[ix_replace]
+            fea_val[ix_missing]$Id <- id_orig
+            ix_missing <- which( is.na(fea_val$ff3))
+            niter <- niter + 1
+        }
+        
+        fea <- rbind(fea, fea_val)[, min_time := NULL]
+    }
+    setkey(fea, Id)
+    setkey(dt, Id)
+    return( dt[fea, nomatch=FALSE])
+}
+
 add_magic <- function(dt) {
     magic <- readRDS(file = '../data/faron_magic4.rds')
     setkey(dt, Id)
@@ -121,4 +171,94 @@ read_raw_chunk <- function( i, nchunk = 10, input = '../input/train_numeric.csv'
         saveRDS(chunk, file=chunk_name)
     }
     return(chunk)
+}
+
+#### performance ROCR ... double precision
+.performance.phi <- function (predictions, labels, cutoffs, fp, tp, fn, tn, n.pos, 
+                              n.neg, n.pos.pred, n.neg.pred) 
+{
+    list(cutoffs, (tn * tp - fn * fp)/sqrt(as.double(n.pos) * n.neg * n.pos.pred * 
+                                               n.neg.pred))
+}
+
+performance_double <- function (prediction.obj, measure, x.measure = "cutoff", ...) 
+{
+    envir.list <- .define.environments()
+    long.unit.names <- envir.list$long.unit.names
+    function.names <- envir.list$function.names
+    obligatory.x.axis <- envir.list$obligatory.x.axis
+    optional.arguments <- envir.list$optional.arguments
+    default.values <- envir.list$default.values
+    if (class(prediction.obj) != "prediction" || !exists(measure, 
+                                                         where = long.unit.names, inherits = FALSE) || !exists(x.measure, 
+                                                                                                               where = long.unit.names, inherits = FALSE)) {
+        stop(paste("Wrong argument types: First argument must be of type", 
+                   "'prediction'; second and optional third argument must", 
+                   "be available performance measures!"))
+    }
+    if (exists(x.measure, where = obligatory.x.axis, inherits = FALSE)) {
+        message <- paste("The performance measure", x.measure, 
+                         "can only be used as 'measure', because it has", 
+                         "the following obligatory 'x.measure':\n", get(x.measure, 
+                                                                        envir = obligatory.x.axis))
+        stop(message)
+    }
+    if (exists(measure, where = obligatory.x.axis, inherits = FALSE)) {
+        x.measure <- get(measure, envir = obligatory.x.axis)
+    }
+    if (x.measure == "cutoff" || exists(measure, where = obligatory.x.axis, 
+                                        inherits = FALSE)) {
+        
+        optional.args <- list(...)
+        argnames <- c()
+        if (exists(measure, where = optional.arguments, inherits = FALSE)) {
+            
+            argnames <- get(measure, envir = optional.arguments)
+            default.arglist <- list()
+            for (i in 1:length(argnames)) {
+                default.arglist <- c(default.arglist, get(paste(measure, 
+                                                                ":", argnames[i], sep = ""), envir = default.values, 
+                                                          inherits = FALSE))
+            }
+            names(default.arglist) <- argnames
+            for (i in 1:length(argnames)) {
+                templist <- list(optional.args, default.arglist[[i]])
+                names(templist) <- c("arglist", argnames[i])
+                optional.args <- do.call(".farg", templist)
+            }
+        }
+        optional.args <- .select.args(optional.args, argnames)
+        function.name <- get(measure, envir = function.names)
+        print(c('dah-modified', function.name))
+        x.values <- list()
+        y.values <- list()
+        
+        for (i in 1:length(prediction.obj@predictions)) {
+            argumentlist <- .sarg(optional.args, predictions = prediction.obj@predictions[[i]], 
+                                  labels = prediction.obj@labels[[i]], cutoffs = prediction.obj@cutoffs[[i]], 
+                                  fp = prediction.obj@fp[[i]], tp = prediction.obj@tp[[i]], 
+                                  fn = prediction.obj@fn[[i]], tn = prediction.obj@tn[[i]], 
+                                  n.pos = prediction.obj@n.pos[[i]], n.neg = prediction.obj@n.neg[[i]], 
+                                  n.pos.pred = prediction.obj@n.pos.pred[[i]], 
+                                  n.neg.pred = prediction.obj@n.neg.pred[[i]])
+            ans <- do.call(function.name, argumentlist)
+            if (!is.null(ans[[1]])) 
+                x.values <- c(x.values, list(ans[[1]]))
+            y.values <- c(y.values, list(ans[[2]]))
+        }
+
+        if (!(length(x.values) == 0 || length(x.values) == length(y.values))) {
+            stop("Consistency error.")
+        }
+        return(new("performance", x.name = get(x.measure, envir = long.unit.names), 
+                   y.name = get(measure, envir = long.unit.names), alpha.name = "none", 
+                   x.values = x.values, y.values = y.values, alpha.values = list()))
+    }
+    else {
+        perf.obj.1 <- performance(prediction.obj, measure = x.measure, 
+                                  ...)
+        perf.obj.2 <- performance(prediction.obj, measure = measure, 
+                                  ...)
+        return(.combine.performance.objects(perf.obj.1, perf.obj.2))
+    }
 }
