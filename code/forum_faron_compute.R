@@ -19,22 +19,6 @@ number_of_chunks <- 20
 n_train <- 1183747
 n_test <- 1183748
 
-# Features
-numeric_features <- c('Id',
-                      'L1_S24_F1604',
-                      'L1_S24_F1695', 
-                      'L1_S24_F1846', 
-                      'L3_S29_F3407', 
-                      'L3_S32_F3850',
-                      'L3_S33_F3855', 
-                      'L3_S33_F3865')
-date_features <- c('Id',
-                   'L3_S30_D3496', 
-                   'L3_S30_D3501',
-                   'L3_S30_D3506', 
-                   'L3_S32_D3852', 
-                   'L3_S33_D3856')
-
 
 ## 1: EXTRACT MIN DATE
 ## ===================
