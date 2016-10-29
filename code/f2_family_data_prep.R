@@ -52,6 +52,7 @@ trnw.f2.info <- trnw.f2 %>% select( starts_with("F")) %>%
 trnw.f2.info %>%
     ggplot( aes( family)) + geom_bar() + ggtitle ('Families in training_ data')
 trnw.f2.info %>% count( family, sort = TRUE )
+rm(trnw.f2.info)
 
 trnw.f2 <- trnw.f2[ F2 == TRUE & pure == TRUE ]
 sum(trnw.f2[, Response]) # 1312
@@ -214,22 +215,49 @@ rm_dup_cols <- function(dt, search_cols_prefix = 'L') {
 trnw.f2 <- rm_dup_cols(trnw.f2)
 dim(trnw.f2) #  240976    622
 object.size(trnw.f2) /1e9 # 1.19 GB
-tcheck(desc='built numerics data')
+tcheck(desc='built numeric data')
 
-##############  
+saveRDS(trnw.f2, file='../data/tmp_trnw_f2.rds')
+setkey(trnw.f2, Id)
+family_ids <- trnw.f2[, .(Id)]
+rm(trnw.f2);gc()
+
 input_cat <- gsub('numeric', 'categorical', input_csv)
-col_names <- fread(input_cat, nrows=0L) %>% names()
-#################
 cat.f2 <- data.table()
 
 for (ichunk in 1:10) {
     print(ichunk)
     cat.chunk <- read_raw_chunk(ichunk, input= input_cat)
-    keep_ids <- intersect( cat.chunk$Id, trnw.f2$Id)
-    cat.f2 <- rbind(cat.f2, cat.chunk[keep_ids])
+    setkey(cat.chunk, Id)
+    cat.chunk <- cat.chunk[family_ids, nomatch=FALSE]
+    cat.f2 <- rbind(cat.f2, cat.chunk)
+    setkey(cat.f2, Id)
     rm(cat.chunk)
 }
-setkey(cat.f2, Id)
+rm(family_ids);gc()
+
+dim(cat.f2) #  240976    2141
+object.size(cat.f2) /1e9 # 2.06 GB
+
+na_cols <- lapply(cat.f2, function(x) all(is.na(x)))  #should only be 1
+na_col_names <- names(cat.f2)[which( unlist(na_cols))]
+cat.f2[, (na_col_names) := NULL]
+
+dim(cat.f2) #  240976    761
+object.size(cat.f2) /1e9 # 0.73 GB
+
 cat.f2 <- rm_dup_cols(cat.f2)
 
+dim(cat.f2) #  240976    81
+object.size(cat.f2) /1e9 # 0.078 GB
 
+tcheck(desc='built categorical data')
+
+trnw.f2 <- readRDS( file='../data/tmp_trnw_f2.rds')
+setkey(trnw.f2, Id)
+trnw.f2 <- trnw.f2[cat.f2, nomatch=FALSE]
+
+saveRDS(trnw.f2, file='../data/tmp_trnw_f2_wcat.rds')
+
+rm(cat.f2)
+gc()
