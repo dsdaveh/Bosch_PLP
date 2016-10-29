@@ -20,7 +20,9 @@ if(! exists("ichunk")) ichunk <- 1
 if(! exists("input_csv")) input_csv <- '../input/train_numeric.csv'
 if(! exists("seed"))seed <- 1912
 
-source("f2_family_data_prep.R")
+#source("f2_family_data_prep.R")
+trnw.f2 <- readRDS(file='../data/tmp_trnw_f2_wcat.rds')
+family_pf_ratio <- nrow(trnw.f2) / sum(trnw.f2$Response)
 
 n_oos <- floor( family_pf_ratio / pass_fail_ratio)  
 if(! exists("start_oos")) start_oos <- 1    #assume first model is build and stored as .rds somewhere?
@@ -66,6 +68,7 @@ reduce_cols <- c("magic4", "L3_S32_F3854", "magic3", "L3_S33_F3865", "proc_time"
 "L3_S36_F3920", "L3_S33_F3859", "L0_S21_F497", "L0_S12_F330", "L3_S30_F3494",
 "L2_S27_F3166", "L0_S18_F439", "L0_S15_F397", "L3_S29_F3339")
 trnw <- trnw[, c('Id', 'Response', reduce_cols), with=F ]
+trnw <- trnw[ trnw.f2[, c('Id', 'L3_S34_F3882'), with=F]] #setkey(...,Id)
 
 # remove duplicates
 chk_cols <- setdiff( names(trnw), c("Id", names(trnw)[grepl("magic", names(trnw))]))
@@ -80,14 +83,17 @@ setkey(trnw, min_time)
 fold_size <- round((nrow(trnw) +  nfolds - 1) / nfolds)
 #trnw$kfold <- rep(1:nfolds, each=fold_size)[1:nrow(trnw)]
 trnw$kfold <- rep(1:nfolds, fold_size)[1:nrow(trnw)]
-trn_cols <- setdiff( names(trnw), c("Id", "Response", "kfold"))
 
 # build a hold out data set -- consistent for each round
 pass_fail_train <- nrow(trnw) / sum(trnw$Response)
 
 oos_chunk_results <- list()
 family_results <- data.table()
+trnw.keep <- trnw
 for(k in 1:nfolds) {
+    trnw <- trnw.keep
+    trnw <- add_cv_feature(trnw, exclude_fold = k)
+    trn_cols <- setdiff( names(trnw), c("Id", "Response", "kfold"))
     k_val <- trnw[ kfold == k ]
     kval_xgb <- xgb.DMatrix( dropNA(as.matrix(k_val[, .SD, .SDcols = trn_cols])), label = k_val$Response, missing = 9999999 )
     
