@@ -61,6 +61,20 @@ add_magic <- function(dt) {
     return(dt)
 }
 
+add_time_station <- function(dt, ds='train') {
+    dsname <- sprintf('../data/%s_date_station_features.rds', ds)
+    stopifnot(file.exists(dsname))
+    #from: source('data_prep_train.R')
+    id_cnt <- readRDS(file = dsname)
+    
+    # number of na's os a feature (might be the only feature for some categorical observations)
+    dt$na_count <- apply(trnw, 1, function(x) sum(is.na(x))) 
+    setkey(dt, Id)
+    
+    dt <- dt[ id_cnt, nomatch=FALSE]
+    return(dt)
+}
+
 normalize <- function(x) (x - min(x)) / diff(range(x))
 
 calc_mcc <- function(v) {

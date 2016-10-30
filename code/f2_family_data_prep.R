@@ -18,6 +18,7 @@ f3_colb <- col_names[ grepl("L1_S25", col_names)][1]
 fcols <- c( f1_col, f2_col, f3_cola, f3_colb)
 #trn_fcols <- fread(input_csv, select=c("Id", "Response", fcols) )
 #################
+tcheck(desc='start numerics assembly')
 trnw.f2 <- data.table()
 for (ichunk in 1:10) {
     trnw <- read_raw_chunk(ichunk, input= input_csv)
@@ -200,7 +201,6 @@ family_pf_ratio <- nrow(trnw.f2) / sum(trnw.f2$Response)
 # 
 # nrow(trnw.f2) / sum(trnw.f2[, Response]) # pass:fail = 184:1
 
-#eliminate duplicate columns
 rm_dup_cols <- function(dt, search_cols_prefix = 'L') {
     check_dups <- dt %>% select(starts_with(search_cols_prefix)) %>% as.matrix() %>% t() %>% as.data.frame()
     Lnames <- names(dt)[grepl('^L', names(dt))]
@@ -212,6 +212,7 @@ rm_dup_cols <- function(dt, search_cols_prefix = 'L') {
     return(dt)
 }
 
+tcheck(desc = 'eliminate duplicate numeric columns')
 trnw.f2 <- rm_dup_cols(trnw.f2)
 dim(trnw.f2) #  240976    622
 object.size(trnw.f2) /1e9 # 1.19 GB
@@ -222,6 +223,7 @@ setkey(trnw.f2, Id)
 family_ids <- trnw.f2[, .(Id)]
 rm(trnw.f2);gc()
 
+tcheck(desc = 'start categorical assembly')
 input_cat <- gsub('numeric', 'categorical', input_csv)
 cat.f2 <- data.table()
 
@@ -246,12 +248,15 @@ cat.f2[, (na_col_names) := NULL]
 dim(cat.f2) #  240976    761
 object.size(cat.f2) /1e9 # 0.73 GB
 
+tcheck(desc = 'eliminate duplicate categorical columns')
 cat.f2 <- rm_dup_cols(cat.f2)
 
 dim(cat.f2) #  240976    81
 object.size(cat.f2) /1e9 # 0.078 GB
 
 tcheck(desc='built categorical data')
+#modify names slightly so we can identify the categoricals
+names(cat.f2) <- gsub('_F', '_cF', names(cat.f2))
 
 trnw.f2 <- readRDS( file='../data/tmp_trnw_f2.rds')
 setkey(trnw.f2, Id)
@@ -261,3 +266,4 @@ saveRDS(trnw.f2, file='../data/tmp_trnw_f2_wcat.rds')
 
 rm(cat.f2)
 gc()
+tcheck(desc = 'build trnw.f2')

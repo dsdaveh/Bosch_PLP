@@ -28,34 +28,7 @@ n_oos <- floor( family_pf_ratio / pass_fail_ratio)
 if(! exists("start_oos")) start_oos <- 1    #assume first model is build and stored as .rds somewhere?
 
 trnw <- trnw.f2
-
-# number of na's os a feature (might be the only feature for some categorical observations)
-trnw$na_count <- apply(trnw, 1, function(x) sum(is.na(x))) 
-setkey(trnw, Id)
-
-trnl_date <- data.table()
-for (i in 1:10) {
-    trnl_date <- rbind(
-        trnl_date,
-        readRDS(file = sprintf("../data/train_date_long_chunk_%d.rds", i)) ) # see 'load_date_long.R'
-    setkey(trnl_date, Id)
-    trnl_date <- trnl_date[ Id %in% trnw$Id ] ; gc()
-}
-tcheck( desc = 'loaded date dataset (long)')
-
-## stolen from date eda
-id_cnt <- trnl_date[
-    , station := str_extract(metric, "S\\d+")][               #extract station ID
-        , .(station_metric_count=.N,
-            time_in = min(value), time_out = max(value)), by=c("Id", "station")][     #rollup by station
-                , .(station_count = .N, metric_count = sum(station_metric_count),
-                    min_time = min(time_in), max_time = max(time_out)), by=Id ][  #rollup by Id
-                        , proc_time := max_time - min_time]
-rm(trnl_date); gc()
-setkey(id_cnt, Id)
-
-trnw <- trnw[ id_cnt, nomatch=FALSE]
-rm(id_cnt); gc()
+trnw <- add_time_station(trnw, 'train')
 
 # Add Faron's magic
 trnw <- add_magic(trnw)
