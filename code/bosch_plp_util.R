@@ -4,7 +4,7 @@ library(data.table)
 EOL = "\n"
 
 fea_ff <- function(dt, mag) {
-    frate <- dt[, .(Id, Response, min_time, tval = round(min_time * 100 / 10**mag, 0))]
+    frate <- dt[, .(Id, Response, max_time, tval = round(max_time * 100 / 10**mag, 0))]
     frate[ , frate := sum(Response)/.N, tval]
     return( frate$frate )
 }
@@ -13,7 +13,7 @@ add_cv_feature <- function( dt, exclude_fold=0) {
     
     #failure frequency features
     ix <- dt$kfold != exclude_fold
-    fea <- dt[ix, .(Id, min_time)]
+    fea <- dt[ix, .(Id, max_time)]
     #fea$ff0 <- fea_ff(dt[ix], 0)
     #fea$ff1 <- fea_ff(dt[ix], 1)
     #fea$ff2 <- fea_ff(dt[ix], 2)
@@ -28,10 +28,10 @@ add_cv_feature <- function( dt, exclude_fold=0) {
                           #ff2 = max(ff2),
                           ff3 = max(ff3),
                           ff4 = max(ff4),
-                          ff5 = max(ff5)), min_time]
-        fea_val <- dt[ix2, .(Id, min_time)]
-        setkey(fea_val, min_time)
-        setkey(mt_lkp, min_time)
+                          ff5 = max(ff5)), max_time]
+        fea_val <- dt[ix2, .(Id, max_time)]
+        setkey(fea_val, max_time)
+        setkey(mt_lkp, max_time)
         fea_val <- mt_lkp[fea_val]
         
         #fix rows where m_time did not match
@@ -46,7 +46,7 @@ add_cv_feature <- function( dt, exclude_fold=0) {
             niter <- niter + 1
         }
         
-        fea <- rbind(fea, fea_val)[, min_time := NULL]
+        fea <- rbind(fea, fea_val)[, max_time := NULL]
     }
     setkey(fea, Id)
     setkey(dt, Id)
