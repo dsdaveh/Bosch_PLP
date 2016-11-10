@@ -12,13 +12,16 @@ library(ggplot2)
 library(xgboost)
 library(ROCR)
 library(recommenderlab)
+library(tidyr)
 
 source('bosch_plp_util.R')
 
 if(! exists("pass_fail_ratio")) pass_fail_ratio <- 200
-if(! exists("ichunk")) ichunk <- 1
 if(! exists("input_csv")) input_csv <- '../input/train_numeric.csv'
 if(! exists("seed"))seed <- 1912
+tcheck.print <- TRUE
+build_final <- FALSE
+make_submission <- FALSE
 
 #source("f2_family_data_prep.R")
 trnw.f2 <- readRDS(file='../data/tmp_trnw_f2_wcat.rds')
@@ -28,7 +31,12 @@ n_oos <- max( floor( family_pf_ratio / pass_fail_ratio)  , 1)
 if(! exists("start_oos")) start_oos <- 1    #assume first model is build and stored as .rds somewhere?
 
 trnw <- trnw.f2
+rm(trnw.f2)
+
 trnw <- add_time_station(trnw, 'train')
+
+# number of na's os a feature (might be the only feature for some categorical observations)
+trnw$na_count <- apply(trnw, 1, function(x) sum(is.na(x))) 
 
 # Add Faron's magic
 trnw <- add_magic(trnw)
@@ -41,6 +49,9 @@ chk_cols <- setdiff( names(trnw), c("Id", names(trnw)[grepl("magic", names(trnw)
 dup_rows <- duplicated(data.frame(trnw)[ ,chk_cols])
 trnw <- trnw[! dup_rows]
 
+#saveRDS(trnw, file='../tmp_f2_xtrain_data_prepped.rds')
+#trnw <- readRDS( file='../tmp_f2_xtrain_data_prepped.rds')
+
 nfolds <- 5
 
 #create folds from sequential data
@@ -52,19 +63,9 @@ trnw$kfold <- rep(1:nfolds, fold_size)[1:nrow(trnw)]
 # build a hold out data set -- consistent for each round
 pass_fail_train <- nrow(trnw) / sum(trnw$Response)
 
-# reduce_cols <- imp_avg %>% arrange(desc(avg_gain)) %>% head(25) %>% .[[1]]
-# reduce cols from _nmc50 -> _nmc50r1
-# reduce_cols <- c("magic4", "L3_S32_F3854", "magic3", "L3_S33_F3865", "proc_time",
-# "L0_S12_F350", "L3_S30_F3704", "min_time", "max_time", "L3_S30_F3759", "L3_S33_F3857",
-# "L3_S33_F3855", "L0_S12_F346", "L0_S13_F354", "L0_S13_F356",  "L3_S30_F3744", 
-# "L3_S36_F3920", "L3_S33_F3859", "L0_S21_F497", "L0_S12_F330", "L3_S30_F3494",
-# "L2_S27_F3166", "L0_S18_F439", "L0_S15_F397", "L3_S29_F3339")
-# trnw <- trnw[, c('Id', 'Response', reduce_cols), with=F ]
-# trnw <- trnw[ trnw.f2[, c('Id', 'L3_S34_F3882'), with=F]] #setkey(...,Id)
-
 #from:  oos_chunk_results <- readRDS(file='../data/f2_xtrain_models_nmcAllff345.rds') 
 top30 = c("magic4","L3_S32_cF3854","magic3","L3_S33_F3855","L3_S33_F3857","L3_S33_F3865","L0_S12_F350","proc_time","L0_S12_F346","L3_S30_F3759","L0_S13_F356","L3_S33_F3859","L0_S19_F455","L0_S19_F459","max_time","L3_S36_F3920","L3_S30_F3754","L3_S30_F3804","L3_S30_F3744","L0_S13_F354","L0_S21_F497","L0_S18_F439","L3_S30_F3609","L2_S27_F3166","L3_S32_F3850","L0_S15_F397","L3_S30_F3749","L3_S30_F3639","L3_S29_F3379")
-trnw <- trnw[, c('Id', 'Response', top30), with=F ]
+#trnw <- trnw[, c('Id', 'Response', 'kfold', 'min_time', top30), with=F ]
 
 oos_chunk_results <- list()
 family_results <- data.table()
@@ -73,6 +74,7 @@ trnw.keep <- trnw
 for(k in 1:nfolds) {
     trnw <- trnw.keep
     trnw <- add_cv_feature(trnw, exclude_fold = k)
+    #trnw[, min_time:= NULL] #removes explicit add above ... may still be in if its in top30
     trn_cols <- setdiff( names(trnw), c("Id", "Response", "kfold"))
     k_val <- trnw[ kfold == k ]
     kval_xgb <- xgb.DMatrix( dropNA(as.matrix(k_val[, .SD, .SDcols = trn_cols])), label = k_val$Response, missing = 9999999 )
@@ -94,7 +96,7 @@ for(k in 1:nfolds) {
         
         xgb_params <- list( 
             eta = 0.1,      #
-                 max_depth = 6,   # 
+            #     max_depth = 6,   # 
             #     gamma = 0.5,     # 
             #     min_child_weight = 5, #
             #     subsample = 0.5,
@@ -188,7 +190,7 @@ print(oos_auc)
 cv_results <- data.frame( MCC=oos_mcc, AUC=oos_auc, cutoff=oos_cut, run=1:(n_oos*nfolds),
                           kfold = as.factor(rep(1:nfolds, each=n_oos)),
                           ts =  rep(1:n_oos, nfolds) )
-cv_results %>% gather( result, value, MCC, AUC, cutoff) %>%
+cv_plot <- cv_results %>% gather( result, value, MCC, AUC, cutoff) %>%
     ggplot(aes(run, value)) + 
     geom_line(aes(col=result)) +
     geom_point(aes(shape=kfold), size=4) +
@@ -216,6 +218,8 @@ legend("bottomright", c("Best MCC", "by_ratio", "mean", "MCC range"),
        lty=c(1,2,3,NA), pch=c(NA,NA,NA, 15), col=c(1,1,1, "cyan"))
 title(sprintf("MCC for mean probs AUC=%f", ens_auc))
 
+cv_plot + geom_hline( yintercept = mcc_best, col='blue', linetype='dashed')
+
 mcc_ratio <- calc_mcc( table( family_results$Response, family_results$mean_probs >= cutoff_ratio))
 mcc_mean <- calc_mcc( table( family_results$Response, family_results$mean_probs >= mean(oos_cut)))
 mcc_best
@@ -227,3 +231,54 @@ trnw <- trnw.keep # do this for multiple interactive runs
 
 #rm(trnw, trnw_fresh, trnw.f2, trnw.f2.info)
 gc()
+
+if (build_final) {
+    trnw <- trnw.keep
+    trnw <- add_cv_feature(trnw)
+    trnw[, min_time:= NULL] #removes explicit add above ... may still be in if its in top30
+    trn_cols <- setdiff( names(trnw), c("Id", "Response", "kfold"))
+
+    xgb_trn <- xgb.DMatrix( dropNA(as.matrix(trnw[, .SD, .SDcols = trn_cols])), label = trnw$Response, missing = 99 )
+    model <- xgb.train( params = xgb_params, 
+                        data=xgb_trn,
+                        nrounds = 80,
+                        print.every.n = 5L,
+                        verbose = 1 )
+    
+    tcheck(desc= 'trained  final model')
+    saveRDS(model, file='../data/f2_full_model.rds')
+}
+
+rm (trnw.keep); gc()
+
+if (make_submission) {
+    #source("f2_family_data_prep_test.R")
+    tstw <- readRDS(file='../data/tmp_tstw_f2_wcat.rds')
+    
+    tstw <- add_time_station(tstw, 'test')
+    
+    # Add Faron's magic
+    tstw <- add_magic(tstw)
+    
+    rm_cols <- c(names(tstw)[grepl("^F", names(tstw))], 'pure')
+    tstw <- tstw[ , setdiff(names(tstw), rm_cols), with=F]
+    
+    tstw <- add_cv_feature_lkp(tstw, trnw)
+    tstw[, min_time:= NULL] #removes explicit add above ... may still be in if its in top30
+    trn_cols <- setdiff( names(tstw), c("Id", "Response", "kfold"))
+    
+    probs <- predict( model, dropNA(as.matrix(tstw[, .SD, .SDcols = trn_cols])), missing=99 )
+    results <- tstw[, .(Id, probs = probs, preds = as.integer(probs >= cutoff))]
+    
+    source('blend_shen1.R')
+    shen_preds <- read.csv("C:/Users/Dave/Downloads/submission_2016-10-26-20-42.csv.gz") %>% data.table()
+    setkey(shen_preds, Id)
+    setkey(results, Id)
+    results[, probs := NULL]
+    blend <- results[shen_preds]
+    blend[ is.na(preds), preds := 0]
+    blend[, either := as.integer( preds + Response > 0)]
+    write.csv( blend[, .(Id, Response=either)], file='../submissions/f2_binary_blend.csv', row.names = F)
+    
+
+}

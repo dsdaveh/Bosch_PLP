@@ -12,8 +12,9 @@ fea_ff <- function(dt, mag) {
 add_cv_feature_lkp <- function(dt, dt_lkp) {
     mt_lkp <- dt_lkp[ , .(
         ff3 = max(ff3),
-        ff4 = max(ff4),
-        ff5 = max(ff5)), min_time]
+        ff4 = max(ff4)
+        #ff5 = max(ff5)
+        ),         min_time]
     setkey(dt, min_time)
     setkey(mt_lkp, min_time)
     dt <- mt_lkp[dt]
@@ -43,7 +44,7 @@ add_cv_feature <- function( dt, exclude_fold=0) {
     #fea$ff2 <- fea_ff(dt[ix], 2)
     fea$ff3 <- fea_ff(dt[ix], 3)
     fea$ff4 <- fea_ff(dt[ix], 4)
-    fea$ff5 <- fea_ff(dt[ix], 5)
+    #fea$ff5 <- fea_ff(dt[ix], 5)
     
     if (exclude_fold > 0) {
         fea_val <-  add_cv_feature_lkp( dt[ kfold == exclude_fold, .(Id, min_time)], fea)
