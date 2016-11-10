@@ -179,5 +179,48 @@ object.size(dt.f2) /1e9 # 1.86 GB
 keep_cols <- intersect( c('Id', cols_used), names(dt.f2))
 dt.f2 <- dt.f2[ ,keep_cols, with=FALSE]
 dim(dt.f2) #  241076    634
-object.size(dt.f2) /1e9 # 1.19 GB
+object.size(dt.f2) /1e9 # 1.18 GB
 
+###################################################
+saveRDS(dt.f2, file='../data/tmp_tstw_f2.rds')
+setkey(dt.f2, Id)
+family_ids <- dt.f2[, .(Id)]
+rm(dt.f2);gc()
+
+tcheck(desc = 'start categorical assembly')
+input_cat <- gsub('numeric', 'categorical', input_csv)
+cat.f2 <- data.table()
+
+for (ichunk in 1:10) {
+    print(ichunk)
+    cat.chunk <- read_raw_chunk(ichunk, input= input_cat)
+    setkey(cat.chunk, Id)
+    cat.chunk <- cat.chunk[family_ids, nomatch=FALSE]
+    cat.f2 <- rbind(cat.f2, cat.chunk)
+    setkey(cat.f2, Id)
+    rm(cat.chunk)
+}
+rm(family_ids);gc()
+
+dim(cat.f2) #  # 241399   2141
+object.size(cat.f2) /1e9 #  #2.07
+
+#modify names slightly so we can identify the categoricals
+names(cat.f2) <- gsub('_F', '_cF', names(cat.f2))
+
+keep_cols <- intersect( c('Id', cols_used), names(cat.f2))
+cat.f2 <- cat.f2[ ,keep_cols, with=FALSE]
+dim(cat.f2) #  241399     81
+object.size(cat.f2) /1e9 # 0.078 GB
+
+tcheck(desc='built categorical data')
+
+dt.f2 <- readRDS( file='../data/tmp_tstw_f2.rds')
+setkey(dt.f2, Id)
+dt.f2 <- dt.f2[cat.f2, nomatch=FALSE]
+
+saveRDS(dt.f2, file='../data/tmp_tstw_f2_wcat.rds')
+
+rm(cat.f2)
+gc()
+tcheck(desc = 'built tstw.f2')
