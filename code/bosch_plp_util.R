@@ -4,50 +4,52 @@ library(data.table)
 EOL = "\n"
 
 fea_ff <- function(dt, mag) {
-    frate <- dt[, .(Id, Response, max_time, tval = round(max_time * 100 / 10**mag, 0))]
+    frate <- dt[, .(Id, Response, min_time, tval = round(min_time * 100 / 10**mag, 0))]
     frate[ , frate := sum(Response)/.N, tval]
     return( frate$frate )
 }
+
+add_cv_feature_lkp <- function(dt, dt_lkp) {
+    mt_lkp <- dt_lkp[ , .(
+        ff3 = max(ff3),
+        ff4 = max(ff4),
+        ff5 = max(ff5)), min_time]
+    setkey(dt, min_time)
+    setkey(mt_lkp, min_time)
+    dt <- mt_lkp[dt]
+    
+    #fix rows where m_time did not match
+    ix_missing <- which( is.na(dt$ff3))
+    niter <- 1
+    while( length(ix_missing > 0)) {
+        ix_replace <- ifelse(ix_missing == 1, 1 + niter, ix_missing + 1)
+        id_orig <- dt[ix_missing, Id]
+        dt[ix_missing] <- dt[ix_replace]
+        dt[ix_missing]$Id <- id_orig
+        ix_missing <- which( is.na(dt$ff3))
+        niter <- niter + 1
+    }
+    return(dt)
+}
+
 add_cv_feature <- function( dt, exclude_fold=0) {
     #exclude_fold > 0 (1:nfolds) build features separately for train/validation
     
     #failure frequency features
     ix <- dt$kfold != exclude_fold
-    fea <- dt[ix, .(Id, max_time)]
+    fea <- dt[ix, .(Id, min_time)]
     #fea$ff0 <- fea_ff(dt[ix], 0)
     #fea$ff1 <- fea_ff(dt[ix], 1)
     #fea$ff2 <- fea_ff(dt[ix], 2)
     fea$ff3 <- fea_ff(dt[ix], 3)
     fea$ff4 <- fea_ff(dt[ix], 4)
     fea$ff5 <- fea_ff(dt[ix], 5)
-
-    if (exclude_fold != 0) {
-        ix2 <- dt$kfold == exclude_fold
-        mt_lkp <- fea[, .(#ff0 = max(ff0),
-                          #ff1 = max(ff1),
-                          #ff2 = max(ff2),
-                          ff3 = max(ff3),
-                          ff4 = max(ff4),
-                          ff5 = max(ff5)), max_time]
-        fea_val <- dt[ix2, .(Id, max_time)]
-        setkey(fea_val, max_time)
-        setkey(mt_lkp, max_time)
-        fea_val <- mt_lkp[fea_val]
-        
-        #fix rows where m_time did not match
-        ix_missing <- which( is.na(fea_val$ff3))
-        niter <- 1
-        while( length(ix_missing > 0)) {
-            ix_replace <- ifelse(ix_missing == 1, 1 + niter, ix_missing + 1)
-            id_orig <- fea_val[ix_missing, Id]
-            fea_val[ix_missing] <- fea_val[ix_replace]
-            fea_val[ix_missing]$Id <- id_orig
-            ix_missing <- which( is.na(fea_val$ff3))
-            niter <- niter + 1
-        }
-        
-        fea <- rbind(fea, fea_val)[, max_time := NULL]
+    
+    if (exclude_fold > 0) {
+        fea_val <-  add_cv_feature_lkp( dt[ kfold == exclude_fold, .(Id, min_time)], fea)
+        fea <- rbind(fea, fea_val)[, min_time := NULL]
     }
+    
     setkey(fea, Id)
     setkey(dt, Id)
     return( dt[fea, nomatch=FALSE])
@@ -64,13 +66,10 @@ add_magic <- function(dt) {
 add_time_station <- function(dt, ds='train') {
     dsname <- sprintf('../data/%s_date_station_features.rds', ds)
     stopifnot(file.exists(dsname))
-    #from: source('data_prep_train.R')
+    #from: source('data_prep_date_station.R')
     id_cnt <- readRDS(file = dsname)
     
-    # number of na's os a feature (might be the only feature for some categorical observations)
-    dt$na_count <- apply(trnw, 1, function(x) sum(is.na(x))) 
     setkey(dt, Id)
-    
     dt <- dt[ id_cnt, nomatch=FALSE]
     return(dt)
 }
@@ -81,6 +80,7 @@ calc_mcc <- function(v) {
     # v is a vector or table produces with table(truth, predition)
     # this will yield values in the following order tn, fn, fp, tp
     v <- as.numeric(v) 
+    if (length(v) != 4) return(0)
     tn <- v[1]; fn <- v[2]; fp <- v[3]; tp <- v[4]
     denom <- (tp+fp)*(tp+fn)*(tn+fp)*(tn+fn)
     mcc <- ifelse( denom == 0, 0,
