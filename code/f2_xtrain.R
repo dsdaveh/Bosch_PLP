@@ -287,11 +287,10 @@ if (make_submission) {
     results[, blend_preds := as.integer(blend_probs >= cutoff_blend) ]
     results[, .(sum(preds), sum(shen_preds), sum(blend_preds))]
     
-    results[, probs := NULL]
-    blend <- results[shen_probs]
-    blend[ is.na(preds), preds := 0]
-    blend[, either := as.integer( preds + Response > 0)]
-    write.csv( blend[, .(Id, Response=either)], file='../submissions/f2_binary_blend.csv', row.names = F)
+    submission <- results[, .(Id, Response = blend_preds)]
+    overwrite_shen <- shen_results$Id %in% results$Id 
+    submission <- rbind(submission, shen_results[ ! overwrite_shen, .(Id, Response = shen_preds) ])
+    write.csv( submission, file='../submissions/f2_blend.csv', row.names = F)
     
 
 }
