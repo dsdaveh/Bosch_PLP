@@ -36,7 +36,7 @@ s17_fea <- names(trnw)[grepl("L0_S17", names(trnw))]
 intersect(s12_fea, reduce_cols)
 # [1] "L0_S12_F330" "L0_S12_F346" "L0_S12_F350"
 
-wip <- trnw[, c('Id', 'Response', s16_fea, s17_fea), with=F]
+wip <- trnw[, c('Id', 'Response', s12_fea, s16_fea, s17_fea), with=F]
 summary(wip)
 
 wip %>% ggplot(aes(L0_S16_F421)) + geom_boxplot()
@@ -56,14 +56,31 @@ wip.long %>% mutate(Response = as.factor(Response)) %>%
     filter(station == 'L0_S16_F426') %>%
     ggplot( aes(value, group=Response, fill=Response)) + geom_density(alpha=0.5) 
 
-wip.long %>% mutate(Response = as.factor(Response)) %>%
-    filter(station != 'L0_S16_F426') %>%
-    ggplot( aes(value, group=Response, fill=Response)) + geom_density(alpha=0.5) +
-    facet_wrap( ~ station)
 
 i=1
 i=i+1; fea=s17_fea[i]
 wip.long %>% mutate(Response = as.factor(Response)) %>%
     filter(station == fea) %>%
     ggplot( aes(value, group=Response, fill=Response)) + geom_density(alpha=0.5) 
+
+fea_many <- c('L0_S16_F421', 'L0_S16_F426', s17_fea)
+wip.long %>% filter(station %in% fea_many) %>% count(station) 
+wip.long %>% mutate(Response = as.factor(Response)) %>%
+    filter(station %in% fea_many) %>%
+    ggplot( aes(value, group=Response, fill=Response)) + geom_density(alpha=0.5) +
+    facet_wrap( ~ station)
+
+wip.long %>% mutate(Response = as.factor(Response)) %>%
+    filter(station %in% s12_fea) %>%
+    ggplot( aes(value, group=Response, fill=Response)) + geom_density(alpha=0.5) +
+    ylim(0, 10) + xlim(-.5, .5) +
+    facet_wrap( ~ station)
+
+#add the time features (f2_xtrain 33-58)
+wip <- trnw[, c('Id', 'Response', 'min_time', s12_fea, s16_fea, s17_fea), with=F]
+setkey(wip, min_time)
+
+wip %>% #mutate(Response=as.factor(Response)) %>% 
+    ggplot(aes(min_time, L0_S12_F330)) + geom_smooth() +
+    geom_point(data=wip[Response==1], alpha=.2)
 

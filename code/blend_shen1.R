@@ -1,7 +1,7 @@
 library(ROCR)
 source('bosch_plp_util.R')  # defines performance_double
 
-family_results <- readRDS(file = '../data/f2_xtrain_results_nmc50_ffx.rds') 
+#family_results <- readRDS(file = '../data/f2_xtrain_results_nmcAllff345.rds') 
 shen <- fread('../data/cv_preds_mf.csv')
 setkey(family_results, Id)
 setkey(shen, Id)
@@ -37,7 +37,7 @@ blend_preds <- prediction( blend_prob, family_results$Response )
 auc_blend <- performance(blend_preds, "auc")@y.values[[1]]
 
 par(mfrow=c(1,2))
-mcc_blend <- performance(blend_preds, "mat")
+blend_mcc <- performance(blend_preds, "mat")
 mcc_vals.blend <- blend_mcc@y.values[[1]]
 mcc_cuts.blend <- blend_mcc@x.values[[1]]
 mcc_blend <- max(mcc_vals.blend, na.rm=TRUE )
@@ -52,6 +52,27 @@ plot(dave_perf, col='red', add=TRUE)
 legend("bottomright", c('blend', 'Shen', 'Dave'), col=c('black', 'blue', 'red'), lty=1, lwd=2 )
 par(mfrow=c(1,1))
 
-cutoff <- mcc_cuts.blend[ which.max(mcc_vals.blend)]
+cutoff_blend <- mcc_cuts.blend[ which.max(mcc_vals.blend)]
+cutoff_shen <- mcc_cuts.shen[ which.max(mcc_vals.shen)]
+cutoff_dave <- mcc_cuts.dave[ which.max(mcc_vals.dave)]
 
+calc_mcc( table(  family_results$Response , as.integer(blend_prob > cutoff_blend)))
 
+family_results$blend_prob <- blend_prob
+
+family_results[, c('prob_1', 'mcc_best_1', 'mcc_ratio_1') := NULL]
+family_results[, dave_pred := as.integer(dave_prob > cutoff_dave)]
+family_results[, shen_pred := as.integer(shen_prob > cutoff_shen)]
+family_results[, blend_pred := as.integer(blend_prob > cutoff_blend)]
+family_results[, either := as.integer( dave_pred + shen_pred > 0)]
+
+with(family_results, calc_mcc( table( Response, dave_pred)))
+with(family_results, calc_mcc( table( Response, shen_pred)))
+with(family_results, calc_mcc( table( Response, blend_pred)))
+with(family_results, calc_mcc( table( Response, either)))
+cutoff_blend
+
+family_results[, sum(dave_pred)]
+family_results[, sum(shen_pred)]
+family_results[, sum(blend_pred)]
+family_results[, sum(either)]

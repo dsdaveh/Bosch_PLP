@@ -20,11 +20,12 @@ if(! exists("pass_fail_ratio")) pass_fail_ratio <- 200
 if(! exists("input_csv")) input_csv <- '../input/train_numeric.csv'
 if(! exists("seed"))seed <- 1912
 tcheck.print <- TRUE
-build_final <- FALSE
+build_final <- TRUE
 make_submission <- FALSE
 
 #source("f2_family_data_prep.R")
 trnw.f2 <- readRDS(file='../data/tmp_trnw_f2_wcat.rds')
+#trnw.f2 <- readRDS(file='../data/tmp_trnw_f2.rds')
 family_pf_ratio <- nrow(trnw.f2) / sum(trnw.f2$Response)
 
 n_oos <- max( floor( family_pf_ratio / pass_fail_ratio)  , 1)
@@ -34,9 +35,6 @@ trnw <- trnw.f2
 rm(trnw.f2)
 
 trnw <- add_time_station(trnw, 'train')
-
-# number of na's os a feature (might be the only feature for some categorical observations)
-trnw$na_count <- apply(trnw, 1, function(x) sum(is.na(x))) 
 
 # Add Faron's magic
 trnw <- add_magic(trnw)
@@ -56,6 +54,11 @@ nfolds <- 5
 
 #create folds from sequential data
 setkey(trnw, max_time)
+
+# number of na's os a feature (might be the only feature for some categorical observations)
+trnw$na_count <- apply(trnw, 1, function(x) sum(is.na(x))) 
+#trnw$na_diff <- c(0, diff(trnw$na_count))
+
 fold_size <- round((nrow(trnw) +  nfolds - 1) / nfolds)
 #trnw$kfold <- rep(1:nfolds, each=fold_size)[1:nrow(trnw)]
 trnw$kfold <- rep(1:nfolds, fold_size)[1:nrow(trnw)]
@@ -107,7 +110,7 @@ for(k in 1:nfolds) {
         )
         xgb_nrounds = 500
         
-        xgb_trn <- xgb.DMatrix( dropNA(as.matrix(k_trn[, .SD, .SDcols = trn_cols])), label = k_trn$Response, missing = 99 )
+        xgb_trn <- xgb.DMatrix( dropNA(as.matrix(k_trn[, .SD, .SDcols = trn_cols])), label = k_trn$Response, missing = 9999999 )
         model <- xgb.train( params = xgb_params, 
                             data=xgb_trn,
                             nrounds = xgb_nrounds,
@@ -235,10 +238,10 @@ gc()
 if (build_final) {
     trnw <- trnw.keep
     trnw <- add_cv_feature(trnw)
-    trnw[, min_time:= NULL] #removes explicit add above ... may still be in if its in top30
+    #trnw[, min_time:= NULL] #removes explicit add above ... may still be in if its in top30
     trn_cols <- setdiff( names(trnw), c("Id", "Response", "kfold"))
 
-    xgb_trn <- xgb.DMatrix( dropNA(as.matrix(trnw[, .SD, .SDcols = trn_cols])), label = trnw$Response, missing = 99 )
+    xgb_trn <- xgb.DMatrix( dropNA(as.matrix(trnw[, .SD, .SDcols = trn_cols])), label = trnw$Response, missing = 9999999 )
     model <- xgb.train( params = xgb_params, 
                         data=xgb_trn,
                         nrounds = 80,
@@ -254,6 +257,8 @@ rm (trnw.keep); gc()
 if (make_submission) {
     #source("f2_family_data_prep_test.R")
     tstw <- readRDS(file='../data/tmp_tstw_f2_wcat.rds')
+    #tstw <- readRDS(file='../data/tmp_tstw_f2.rds')
+    
     
     tstw <- add_time_station(tstw, 'test')
     
@@ -264,18 +269,26 @@ if (make_submission) {
     tstw <- tstw[ , setdiff(names(tstw), rm_cols), with=F]
     
     tstw <- add_cv_feature_lkp(tstw, trnw)
-    tstw[, min_time:= NULL] #removes explicit add above ... may still be in if its in top30
+    #tstw[, min_time:= NULL] #removes explicit add above ... may still be in if its in top30
     trn_cols <- setdiff( names(tstw), c("Id", "Response", "kfold"))
     
-    probs <- predict( model, dropNA(as.matrix(tstw[, .SD, .SDcols = trn_cols])), missing=99 )
+    probs <- predict( model, dropNA(as.matrix(tstw[, .SD, .SDcols = trn_cols])), missing=9999999 )
     results <- tstw[, .(Id, probs = probs, preds = as.integer(probs >= cutoff))]
     
     source('blend_shen1.R')
-    shen_preds <- read.csv("C:/Users/Dave/Downloads/submission_2016-10-26-20-42.csv.gz") %>% data.table()
-    setkey(shen_preds, Id)
+    shen_results <- read.csv("../data/submission_2016-11-08-16-17.csv") %>% data.table()
+    shen_results <- shen_results[, .(Id, shen_probs = Response,
+                                     shen_preds = as.integer(Response >= 0.386532663317))]
+    setkey(shen_results, Id)
     setkey(results, Id)
+    
+    results <- results[shen_results, nomatch=FALSE ]
+    results[, blend_probs := (shen_probs * auc_shen + probs * auc_dave) / 2 ]
+    results[, blend_preds := as.integer(blend_probs >= cutoff_blend) ]
+    results[, .(sum(preds), sum(shen_preds), sum(blend_preds))]
+    
     results[, probs := NULL]
-    blend <- results[shen_preds]
+    blend <- results[shen_probs]
     blend[ is.na(preds), preds := 0]
     blend[, either := as.integer( preds + Response > 0)]
     write.csv( blend[, .(Id, Response=either)], file='../submissions/f2_binary_blend.csv', row.names = F)
